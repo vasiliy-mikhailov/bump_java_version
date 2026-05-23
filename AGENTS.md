@@ -8,6 +8,7 @@
 - **vLLM spin-up** (item 5): the inference endpoint observables, ralph-looped over container / proxy config until satisfied.
 - **Dataset rediscovery** (item 6): the corpus the recipe fitness measures against, ralph-looped over candidate repos.
 - **Per-failing-repo refinement** (item 7): a finer-grained ralph loop nested under the recipe fitness. Used when the coarse loop plateaus on the build-success metric.
+- **Runner saturation** (item 8): keep the verifier host loaded enough to make progress without thrashing.
 
 1. **Workdir:** `$HOME/java_8_11_17_to_java_21`.
 2. **Containment:** all language toolchains (JDK / Maven / Gradle / OpenRewrite) and recipe execution run inside Docker. If a host resource this project needs (port, mount, GPU memory, …) is held by something unrelated, free it in favour of this project. Cache external downloads (Maven, npm, HF weights, …) on a host-side bind mount shared across containers — public registries rate-limit hard, so the first cold sweep needs a settled mirror and the cache must survive across iterations.
@@ -25,3 +26,4 @@
    - **Search:** ground each candidate fix in a known community workaround.
    - **Reward:** real `build_post 0 → 1` flips net of regressions on the full corpus.
    - **Repeat:** simplest cluster first; stop when only bespoke engineering remains.
+8. **Fitness (runner saturation):** keep verifier host CPU load between 60 % and 80 % of cores, tuning concurrency through vLLM Qwen 3.6 27B FP8.
