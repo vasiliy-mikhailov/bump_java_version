@@ -12,6 +12,7 @@
 - **Runner saturation** (item 8): keep the verifier host loaded enough to make progress without thrashing.
 - **Sub-agent delegation** (item 10): an agent endpoint the orchestrator can hand well-scoped coding subtasks to.
 - **Dependency-resolution proxy** (item 11): a local Maven/etc cache with plural upstreams, so build outcomes reflect code, not upstream availability.
+- **Observability compactor** (item 12): route verbose tool/metric output through a summariser so the orchestrator scans digests, not dumps; raw source kept on disk.
 
 0. **Fitness (writing this file):** keep AGENTS.md compact and outcome-named so the agent re-derives the *how* every iteration from its tools and the corpus.
    - **Constraints:** no implementation instructions the agent can fill itself, no enumerations that age, no justifications for the rule alongside the rule.
@@ -47,3 +48,9 @@
     - **Search:** when a build fails on "cannot resolve X", widen the upstream set first; only after widening exhausts itself is the failure attributable to the code.
     - **Reward:** per-artifact cache-hit ratio; resolution failures distinguishable from compile failures in the parent loop's classification.
     - **Repeat:** whenever a parent loop's failures cluster on artifact resolution.
+
+12. **Fitness (observability compactor):** route verbose tool output and system-metric flows through a compacting model so the orchestrator scans one-line digests instead of raw dumps.
+    - **Constraints:** the compactor's output may mislabel or omit, so its reliability is treated as bounded — never load-bearing for irreversible decisions without a spot check; the raw uncompacted source persists on disk, keyed so the orchestrator can retrieve the original whenever the compact form is insufficient.
+    - **Search:** when a stream of output becomes routine and exceeds what the orchestrator wants to read line-by-line, route it through the compactor; periodically spot-sample raw vs digest to recalibrate trust.
+    - **Reward:** the orchestrator covers an order of magnitude more output per unit of its own context, while spot-sample agreement with the raw source stays above the threshold it set for the stream.
+    - **Repeat:** whenever a new noisy stream enters the loop.
