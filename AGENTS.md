@@ -26,4 +26,8 @@
    - **Search:** ground each candidate fix in a known community workaround.
    - **Reward:** real `build_post 0 → 1` flips net of regressions on the full corpus.
    - **Repeat:** simplest cluster first; stop when only bespoke engineering remains.
-8. **Fitness (runner saturation):** keep verifier host CPU load between 60 % and 80 % of cores, tuning concurrency through vLLM Qwen 3.6 27B FP8.
+8. **Fitness (runner saturation):** keep the verifier host CPU between 60 % and 80 % of cores *while items 4 / 6 / 7 are running* — saturation has no value on its own, only in service of those loops moving faster.
+   - **Constraints:** any concurrency dial the agent can reach — worker semaphores, docker `--cpus`/`--memory`, parallel Maven / Gradle.
+   - **Search:** sample load periodically, ask vLLM Qwen 3.6 27B FP8 what to adjust given the recent action history and which parent loop is active.
+   - **Reward:** sustained band hit without thrashing or stalling the parent loop.
+   - **Repeat:** continuous, dampened against oscillation; pause when no parent loop is active.
