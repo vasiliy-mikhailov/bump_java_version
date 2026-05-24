@@ -12,6 +12,7 @@
 - **Runner saturation** (item 8): keep the verifier host loaded enough to make progress without thrashing.
 - **Dependency-resolution proxy** (item 11): a local Maven/etc cache with plural upstreams, so build outcomes reflect code, not upstream availability.
 - **Observability compactor** (item 12): route verbose tool/metric output through a summariser so the orchestrator scans digests, not dumps; raw source kept on disk.
+- **Intent coverage** (item 13): measure recipe-vs-human at the intent level, not byte level; drives item 4's reward.
 
 0. **Fitness (writing this file):** keep AGENTS.md compact and outcome-named so the agent re-derives the *how* every iteration from its tools and the corpus.
    - **Constraints:** no implementation instructions the agent can fill itself, no enumerations that age, no justifications for the rule alongside the rule.
@@ -24,7 +25,7 @@
 4. **Fitness (recipe):** find an OpenRewrite recipe composition that converges each repo in `java21-migration-dataset.json` to the form humans committed.
     - **Constraints:** declarative YAML only; each adjacent step in a lineage is its own stage; each stage runs under the JDK matching its output level, accepts exactly one input level, and its source+pom edits persist into the next stage's working tree.
     - **Search:** per stage, draw from the recipe catalog, community migration guidance, and the diff between the candidate's output and the human's commit at that stage's output level.
-    - **Reward:** per stage, fraction of the corpus that builds on the stage's JDK, jointly with closeness to the human's commit at that level, with regressions weighted heavier than non-improvements.
+    - **Reward:** per stage, fraction of the corpus that builds on the stage's JDK, jointly with intent overlap with the human's commit at that level (item 13), with regressions weighted heavier than non-improvements.
     - **Repeat:** ralph loop per stage; on plateau, drop into item 7.
 5. **Fitness (vLLM spin-up):** stand up an OpenAI-compatible chat-completion endpoint that the agent can call from inside Docker containers, serving a model large and tool-capable enough for the recipe loop's prompts, with authentication enforced. Arrive there through a ralph loop over container, model, and reverse-proxy config.
 6. **Fitness (dataset rediscovery):** curate `java21-migration-dataset.json` as distinct-owner lineage samples per (oldest-Java-version × dependency family) cell, where oldest-Java-version ∈ {8, 11, 17} and dependency family ∈ the popular dependencies that OpenRewrite targets as having breaking changes for Java 21 migration. Each entry is a *lineage* — one repo tracked across its Java-version history, with a `commit_sha` recorded at every Java version from the oldest through 21, and each `commit_sha` baseline-buildable inside the runner container under the JDK matching that commit's declared Java version. Iterate candidates through a ralph loop, balancing the matrix.
@@ -52,3 +53,9 @@
     - **Search:** when a stream of output becomes routine and exceeds what the orchestrator wants to read line-by-line, route it through the compactor; the snapshot fed to the compactor must include the failure signals (recently-exited containers, error/exception/traceback grep over service logs) and the compactor's output must surface those signals when present, not just summarise the happy-path state; the compactor behaves like frog's eyes — it stays silent while the snapshot is materially unchanged from the previous one and only emits when a difference crosses an alarm threshold (new errors, new exited containers, progress stall, sharp metric jump); periodically spot-sample raw vs digest to recalibrate trust.
     - **Reward:** the orchestrator covers an order of magnitude more output per unit of its own context, the stream stays silent on unchanged state so emitted entries carry signal rather than noise, and spot-sample agreement with the raw source stays above the threshold it set for the stream.
     - **Repeat:** whenever a new noisy stream enters the loop.
+
+13. **Fitness (intent coverage):** measure recipe-vs-human as overlap of intents, per stage.
+    - **Constraints:** intents are typed atoms extracted from diffs of each side against the same source baseline; not bytes.
+    - **Search:** per stage, extract recipe-intents and human-intents; intersect; surface recipe-only and human-only sets; on the intersection, compare implementations.
+    - **Reward:** maximize human-intent coverage; minimize recipe-intent rejection rate; secondarily, minimize implementation divergence on shared intents.
+    - **Repeat:** alongside item 4's loop; recompute on every composition mutation.
