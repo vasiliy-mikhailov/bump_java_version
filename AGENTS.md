@@ -1,6 +1,6 @@
 0. **Fitness (writing this file):** keep AGENTS.md compact and outcome-named.
     - **Why:** to keep AGENTS.md compact, understandable, fit, aligned — unveiling AI agents' capability to search for solutions on their own given measurable goals and constraints in ralph loops.
-    - **Constraints:** every structured fitness has a Why as its first sub-clause; no implementation instructions the agent can fill itself, no enumerations that age, no justifications outside the Why clause; if a fitness produces output other fitnesses depend on, the obligation lives in Constraints as a contract clause.
+    - **Constraints:** every item has a Why as its first sub-clause; no implementation instructions the agent can fill itself, no enumerations that age, no justifications outside the Why clause; if a fitness produces output other fitnesses depend on, the obligation lives in Constraints as a contract clause.
     - **Search:** read → why → intent — when revisiting a clause, ask "why is this here?"; if the answer is implementation detail, enumeration, or justification that belongs in another fitness's Why, strip it back to the rule itself.
     - **Reward:** cuts that lose words without losing the rule.
     - **Repeat:** every editing pass.
@@ -11,8 +11,11 @@
     - **Reward:** per stage, fraction of the corpus that builds on the stage's JDK, jointly with intent overlap with the human's commit at that level (item 11), with regressions weighted heavier than non-improvements.
     - **Repeat:** ralph loop per stage; on plateau, drop into item 7.
 2. **Paths:** project workdir `$HOME/java_8_11_17_to_java_21`; corpus repo-mirror cache `/var/cache/git-mirrors/<owner>/<repo>.git`.
+    - **Why:** stable, known locations so iterations don't re-derive or re-scan.
 3. **Containment:** all build toolchains and recipe execution run inside Docker. If a host resource this project needs is held by something unrelated, free it in favour of this project.
+    - **Why:** keep build outcomes attributable to the project's code, not host state.
 4. **Access:** SSH calls to the work host share one session, not one per command.
+    - **Why:** cut ssh handshake cost from per-command to per-session.
 5. **Fitness (vLLM spin-up):** stand up an OpenAI-compatible chat-completion endpoint serving a tool-capable model.
     - **Why:** save paid-API tokens by serving high-volume mechanical inference locally.
     - **Constraints:** rejects unauthenticated requests; reachable from inside runner containers; contract with items 1, 7, 11 — endpoint accepts authenticated tool-capable chat completions from within their containers.
