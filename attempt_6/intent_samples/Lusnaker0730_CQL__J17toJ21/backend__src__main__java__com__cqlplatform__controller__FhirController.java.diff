@@ -1,0 +1,368 @@
+diff --git a/backend/src/main/java/com/cqlplatform/controller/FhirController.java b/backend/src/main/java/com/cqlplatform/controller/FhirController.java
+index 47f7271..b58427a 100644
+--- a/backend/src/main/java/com/cqlplatform/controller/FhirController.java
++++ b/backend/src/main/java/com/cqlplatform/controller/FhirController.java
+@@ -1,14 +1,14 @@
+ package com.cqlplatform.controller;
+ 
+ import ca.uhn.fhir.context.FhirContext;
+-import com.cqlplatform.service.fhir.FhirDataProviderService;
+-import com.cqlplatform.service.fhir.FhirTerminologyService;
++import com.cqlplatform.security.InputValidator;
++import com.cqlplatform.service.fhir.*;
+ import io.swagger.v3.oas.annotations.Operation;
+ import io.swagger.v3.oas.annotations.tags.Tag;
+ import lombok.RequiredArgsConstructor;
+-import org.hl7.fhir.r4.model.Bundle;
+-import org.hl7.fhir.r4.model.Resource;
+-import org.hl7.fhir.r4.model.ValueSet;
++import org.hl7.fhir.r4.model.*;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.http.HttpStatus;
+ import org.springframework.http.MediaType;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.web.bind.annotation.*;
+@@ -24,8 +24,259 @@ public class FhirController {
+ 
+     private final FhirDataProviderService dataProviderService;
+     private final FhirTerminologyService terminologyService;
++    private final FhirBulkExportService bulkExportService;
++    private final FhirValidationService validationService;
++    private final VsacService vsacService;
+     private final FhirContext fhirContext;
+ 
++    @Autowired(required = false)
++    private FhirImplementationGuideService igService;
++
++    // ─── Implementation Guide Browsing ─────────────────────────────
++
++    @GetMapping("/ig/packages")
++    @Operation(summary = "List IG Packages", description = "List loaded Implementation Guide packages")
++    public ResponseEntity<?> getIgPackages() {
++        if (igService == null || !igService.isLoaded()) {
++            return ResponseEntity.ok(List.of());
++        }
++        return ResponseEntity.ok(List.of(igService.getPackageMetadata()));
++    }
++
++    @GetMapping("/ig/profiles")
++    @Operation(summary = "Browse IG Profiles", description = "Browse StructureDefinitions from loaded IGs")
++    public ResponseEntity<?> browseProfiles(
++            @RequestParam(required = false) String resourceType,
++            @RequestParam(required = false) String search) {
++        if (igService == null || !igService.isLoaded()) {
++            return ResponseEntity.ok(List.of());
++        }
++        return ResponseEntity.ok(igService.getProfiles(resourceType, search));
++    }
++
++    @GetMapping("/ig/profiles/{url}")
++    @Operation(summary = "Get IG Profile", description = "Get a StructureDefinition by URL")
++    public ResponseEntity<String> getIgProfile(@PathVariable String url) {
++        if (igService == null || !igService.isLoaded()) {
++            return ResponseEntity.notFound().build();
++        }
++        String decodedUrl = java.net.URLDecoder.decode(url, java.nio.charset.StandardCharsets.UTF_8);
++        StructureDefinition sd = igService.getProfileByUrl(decodedUrl);
++        if (sd == null) {
++            return ResponseEntity.notFound().build();
++        }
++        String json = fhirContext.newJsonParser().setPrettyPrint(true).encodeResourceToString(sd);
++        return ResponseEntity.ok()
++                .contentType(MediaType.APPLICATION_JSON)
++                .body(json);
++    }
++
++    @GetMapping("/ig/valuesets")
++    @Operation(summary = "Browse IG ValueSets", description = "Browse ValueSets from loaded IGs")
++    public ResponseEntity<?> browseIgValueSets(@RequestParam(required = false) String search) {
++        if (igService == null || !igService.isLoaded()) {
++            return ResponseEntity.ok(List.of());
++        }
++        return ResponseEntity.ok(igService.getValueSets(search));
++    }
++
++    @GetMapping("/ig/valuesets/{url}")
++    @Operation(summary = "Get IG ValueSet", description = "Get a ValueSet by URL with expansion")
++    public ResponseEntity<String> getIgValueSet(@PathVariable String url) {
++        if (igService == null || !igService.isLoaded()) {
++            return ResponseEntity.notFound().build();
++        }
++        String decodedUrl = java.net.URLDecoder.decode(url, java.nio.charset.StandardCharsets.UTF_8);
++        ValueSet vs = igService.getValueSetByUrl(decodedUrl);
++        if (vs == null) {
++            return ResponseEntity.notFound().build();
++        }
++        String json = fhirContext.newJsonParser().setPrettyPrint(true).encodeResourceToString(vs);
++        return ResponseEntity.ok()
++                .contentType(MediaType.APPLICATION_JSON)
++                .body(json);
++    }
++
++    @GetMapping("/ig/codesystems")
++    @Operation(summary = "Browse IG CodeSystems", description = "Browse CodeSystems from loaded IGs")
++    public ResponseEntity<?> browseIgCodeSystems(@RequestParam(required = false) String search) {
++        if (igService == null || !igService.isLoaded()) {
++            return ResponseEntity.ok(List.of());
++        }
++        return ResponseEntity.ok(igService.getCodeSystems(search));
++    }
++
++    @GetMapping("/ig/codesystems/{url}")
++    @Operation(summary = "Get IG CodeSystem", description = "Get a CodeSystem by URL")
++    public ResponseEntity<String> getIgCodeSystem(@PathVariable String url) {
++        if (igService == null || !igService.isLoaded()) {
++            return ResponseEntity.notFound().build();
++        }
++        String decodedUrl = java.net.URLDecoder.decode(url, java.nio.charset.StandardCharsets.UTF_8);
++        CodeSystem cs = igService.getCodeSystemByUrl(decodedUrl);
++        if (cs == null) {
++            return ResponseEntity.notFound().build();
++        }
++        String json = fhirContext.newJsonParser().setPrettyPrint(true).encodeResourceToString(cs);
++        return ResponseEntity.ok()
++                .contentType(MediaType.APPLICATION_JSON)
++                .body(json);
++    }
++
++    // ─── Cache Management ────────────────────────────────────────────
++
++    @GetMapping("/cache/stats")
++    @Operation(summary = "Cache Statistics", description = "Get cache hit/miss statistics")
++    public ResponseEntity<Map<String, Map<String, Object>>> getCacheStats() {
++        return ResponseEntity.ok(terminologyService.getCacheStats());
++    }
++
++    @DeleteMapping("/cache/{cacheName}")
++    @Operation(summary = "Evict Cache", description = "Clear a named cache (ADMIN only)")
++    public ResponseEntity<Map<String, String>> evictCache(@PathVariable String cacheName) {
++        terminologyService.evictCache(cacheName);
++        return ResponseEntity.ok(Map.of("message", "Cache '" + cacheName + "' evicted"));
++    }
++
++    // ─── Bulk Data Export ────────────────────────────────────────────
++
++    @PostMapping("/$export")
++    @Operation(summary = "Kick Off Bulk Export", description = "Start a bulk data export operation")
++    public ResponseEntity<FhirBulkExportService.BulkExportKickOffResult> kickOffExport(
++            @RequestParam String fhirServer,
++            @RequestParam(defaultValue = "system") String exportType,
++            @RequestParam(name = "_outputFormat", required = false) String outputFormat,
++            @RequestParam(name = "_since", required = false) String since,
++            @RequestParam(name = "_type", required = false) String typeFilter) {
++
++        if (!InputValidator.isValidUrl(fhirServer)) {
++            return ResponseEntity.badRequest().build();
++        }
++
++        FhirBulkExportService.BulkExportKickOffResult result =
++                bulkExportService.kickOffExport(fhirServer, exportType, outputFormat, since, typeFilter);
++        return ResponseEntity.status(HttpStatus.ACCEPTED).body(result);
++    }
++
++    @GetMapping("/$export-status")
++    @Operation(summary = "Poll Export Status", description = "Check the status of a bulk export")
++    public ResponseEntity<FhirBulkExportService.BulkExportStatusResult> pollExportStatus(
++            @RequestParam String statusUrl) {
++
++        FhirBulkExportService.BulkExportStatusResult result = bulkExportService.pollExportStatus(statusUrl);
++        if ("in-progress".equals(result.status())) {
++            return ResponseEntity.status(HttpStatus.ACCEPTED).body(result);
++        }
++        return ResponseEntity.ok(result);
++    }
++
++    // ─── Batch/Transaction ───────────────────────────────────────────
++
++    @PostMapping(value = "/Bundle/$transaction", consumes = MediaType.APPLICATION_JSON_VALUE)
++    @Operation(summary = "Execute Transaction", description = "Execute a FHIR batch or transaction bundle")
++    public ResponseEntity<String> executeTransaction(
++            @RequestParam(required = false) String fhirServer,
++            @RequestBody String bundleJson) {
++
++        Bundle bundle = (Bundle) fhirContext.newJsonParser().parseResource(bundleJson);
++        Bundle result = dataProviderService.executeTransaction(fhirServer, bundle);
++        String json = fhirContext.newJsonParser().setPrettyPrint(true).encodeResourceToString(result);
++        return ResponseEntity.ok()
++                .contentType(MediaType.APPLICATION_JSON)
++                .body(json);
++    }
++
++    // ─── Resource Validation ─────────────────────────────────────────
++
++    @PostMapping(value = "/$validate", consumes = MediaType.APPLICATION_JSON_VALUE)
++    @Operation(summary = "Validate Resource", description = "Validate a FHIR resource against profiles")
++    public ResponseEntity<FhirValidationService.ValidationResult> validateResource(
++            @RequestBody String resourceJson) {
++
++        FhirValidationService.ValidationResult result = validationService.validateResource(resourceJson);
++        return ResponseEntity.ok(result);
++    }
++
++    // ─── Patient Demographics Search ─────────────────────────────────
++
++    @GetMapping("/Patient/$search-by-demographics")
++    @Operation(summary = "Search Patients by Demographics", description = "Search for patients by demographic parameters")
++    public ResponseEntity<?> searchPatientsByDemographics(
++            @RequestParam(required = false) String family,
++            @RequestParam(required = false) String given,
++            @RequestParam(required = false) String birthdate,
++            @RequestParam(required = false) String identifier,
++            @RequestParam(required = false) String fhirServer) {
++
++        if (!InputValidator.isValidNameParam(family)) {
++            return ResponseEntity.badRequest().body(Map.of("error", "Invalid family name parameter"));
++        }
++        if (!InputValidator.isValidNameParam(given)) {
++            return ResponseEntity.badRequest().body(Map.of("error", "Invalid given name parameter"));
++        }
++        if (!InputValidator.isValidDateParam(birthdate)) {
++            return ResponseEntity.badRequest().body(Map.of("error", "Invalid birthdate parameter"));
++        }
++        if (!InputValidator.isValidUrl(fhirServer)) {
++            return ResponseEntity.badRequest().body(Map.of("error", "Invalid FHIR server URL"));
++        }
++
++        Bundle bundle = dataProviderService.searchPatientsByDemographics(fhirServer, family, given, birthdate, identifier);
++        String json = fhirContext.newJsonParser().setPrettyPrint(true).encodeResourceToString(bundle);
++        return ResponseEntity.ok()
++                .contentType(MediaType.APPLICATION_JSON)
++                .body(json);
++    }
++
++    // ─── VSAC Integration ────────────────────────────────────────────
++
++    @GetMapping("/vsac/ValueSet")
++    @Operation(summary = "Search VSAC ValueSets", description = "Search for ValueSets in VSAC by title")
++    public ResponseEntity<List<Map<String, String>>> searchVsacValueSets(
++            @RequestParam(required = false) String title) {
++
++        List<ValueSet> valueSets = vsacService.searchValueSets(title != null ? title : "");
++        List<Map<String, String>> results = valueSets.stream()
++                .map(vs -> Map.of(
++                        "id", vs.getId() != null ? vs.getId() : "",
++                        "url", vs.getUrl() != null ? vs.getUrl() : "",
++                        "name", vs.getName() != null ? vs.getName() : "",
++                        "title", vs.getTitle() != null ? vs.getTitle() : ""
++                ))
++                .toList();
++        return ResponseEntity.ok(results);
++    }
++
++    @GetMapping("/vsac/ValueSet/{oid}")
++    @Operation(summary = "Get VSAC ValueSet", description = "Fetch a ValueSet from VSAC by OID")
++    public ResponseEntity<String> getVsacValueSet(@PathVariable String oid) {
++        if (!InputValidator.isValidResourceId(oid)) {
++            return ResponseEntity.badRequest().body("{\"error\":\"Invalid OID\"}");
++        }
++
++        ValueSet valueSet = vsacService.getValueSetByOid(oid);
++        String json = fhirContext.newJsonParser().setPrettyPrint(true).encodeResourceToString(valueSet);
++        return ResponseEntity.ok()
++                .contentType(MediaType.APPLICATION_JSON)
++                .body(json);
++    }
++
++    @GetMapping("/vsac/ValueSet/{oid}/$expand")
++    @Operation(summary = "Expand VSAC ValueSet", description = "Expand a ValueSet from VSAC by OID")
++    public ResponseEntity<String> expandVsacValueSet(@PathVariable String oid) {
++        if (!InputValidator.isValidResourceId(oid)) {
++            return ResponseEntity.badRequest().body("{\"error\":\"Invalid OID\"}");
++        }
++
++        ValueSet expanded = vsacService.expandValueSetByOid(oid);
++        String json = fhirContext.newJsonParser().setPrettyPrint(true).encodeResourceToString(expanded);
++        return ResponseEntity.ok()
++                .contentType(MediaType.APPLICATION_JSON)
++                .body(json);
++    }
++
++    // ─── Existing CRUD + Terminology Endpoints ───────────────────────
++
+     @GetMapping("/{resourceType}")
+     @Operation(summary = "Search Resources", description = "Search FHIR resources")
+     public ResponseEntity<String> searchResources(
+@@ -33,6 +284,16 @@ public class FhirController {
+             @RequestParam(required = false) String fhirServer,
+             @RequestParam(required = false) String params) {
+ 
++        if (!InputValidator.isValidFhirResourceType(resourceType)) {
++            return ResponseEntity.badRequest().body("{\"error\":\"Invalid FHIR resource type: " + resourceType + "\"}");
++        }
++        if (!InputValidator.isValidSearchParams(params)) {
++            return ResponseEntity.badRequest().body("{\"error\":\"Invalid search parameters\"}");
++        }
++        if (!InputValidator.isValidUrl(fhirServer)) {
++            return ResponseEntity.badRequest().body("{\"error\":\"Invalid FHIR server URL\"}");
++        }
++
+         Bundle bundle = dataProviderService.searchResources(fhirServer, resourceType, params);
+         String json = fhirContext.newJsonParser().setPrettyPrint(true).encodeResourceToString(bundle);
+         return ResponseEntity.ok()
+@@ -47,6 +308,13 @@ public class FhirController {
+             @PathVariable String id,
+             @RequestParam(required = false) String fhirServer) {
+ 
++        if (!InputValidator.isValidFhirResourceType(resourceType)) {
++            return ResponseEntity.badRequest().body("{\"error\":\"Invalid FHIR resource type\"}");
++        }
++        if (!InputValidator.isValidResourceId(id)) {
++            return ResponseEntity.badRequest().body("{\"error\":\"Invalid resource ID\"}");
++        }
++
+         Resource resource = dataProviderService.getResource(fhirServer, resourceType, id);
+         String json = fhirContext.newJsonParser().setPrettyPrint(true).encodeResourceToString(resource);
+         return ResponseEntity.ok()
+@@ -98,12 +366,31 @@ public class FhirController {
+     }
+ 
+     @GetMapping("/ValueSet/$expand")
+-    @Operation(summary = "Expand ValueSet", description = "Expand a ValueSet")
++    @Operation(summary = "Expand ValueSet", description = "Expand a ValueSet (auto-routes VSAC URLs to VSAC service)")
+     public ResponseEntity<String> expandValueSet(
+             @RequestParam String url,
+             @RequestParam(required = false) String filter) {
+ 
+-        ValueSet expanded = terminologyService.expandValueSet(url, filter);
++        ValueSet expanded;
++        // Detect VSAC URLs and route to VsacService which has proper auth
++        if (url.contains("cts.nlm.nih.gov/fhir/ValueSet/")) {
++            String oid = url.substring(url.lastIndexOf("/") + 1);
++            try {
++                expanded = vsacService.expandValueSetByOid(oid);
++            } catch (Exception e) {
++                // VSAC failed — try generic terminology service as fallback
++                try {
++                    expanded = terminologyService.expandValueSet(url, filter);
++                } catch (Exception e2) {
++                    // Both VSAC and generic service failed
++                    return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
++                            .contentType(MediaType.APPLICATION_JSON)
++                            .body("{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"transient\",\"diagnostics\":\"VSAC ValueSet expansion failed. Ensure VSAC_API_KEY is configured. OID: " + oid + "\"}]}");
++                }
++            }
++        } else {
++            expanded = terminologyService.expandValueSet(url, filter);
++        }
+         String json = fhirContext.newJsonParser().setPrettyPrint(true).encodeResourceToString(expanded);
+         return ResponseEntity.ok()
+                 .contentType(MediaType.APPLICATION_JSON)
+@@ -136,6 +423,18 @@ public class FhirController {
+         return ResponseEntity.ok(result);
+     }
+ 
++    @GetMapping("/CodeSystem/$search-codes")
++    @Operation(summary = "Search Codes", description = "Search for codes by text within a code system")
++    public ResponseEntity<java.util.List<FhirTerminologyService.CodeSearchResult>> searchCodes(
++            @RequestParam String system,
++            @RequestParam String text,
++            @RequestParam(defaultValue = "20") int maxResults) {
++
++        java.util.List<FhirTerminologyService.CodeSearchResult> results =
++                terminologyService.searchCodes(system, text, maxResults);
++        return ResponseEntity.ok(results);
++    }
++
+     @GetMapping("/ValueSet")
+     @Operation(summary = "Search ValueSets", description = "Search for ValueSets")
+     public ResponseEntity<List<Map<String, String>>> searchValueSets(
