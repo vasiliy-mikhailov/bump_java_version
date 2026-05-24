@@ -27,8 +27,16 @@
     - **Search:** per stage, draw from the recipe catalog, community migration guidance, and the diff between the candidate's output and the human's commit at that stage's output level.
     - **Reward:** per stage, fraction of the corpus that builds on the stage's JDK, jointly with intent overlap with the human's commit at that level (item 13), with regressions weighted heavier than non-improvements.
     - **Repeat:** ralph loop per stage; on plateau, drop into item 7.
-5. **Fitness (vLLM spin-up):** stand up an OpenAI-compatible chat-completion endpoint that the agent can call from inside Docker containers, serving a model large and tool-capable enough for the recipe loop's prompts, with authentication enforced. Arrive there through a ralph loop over container, model, and reverse-proxy config.
-6. **Fitness (dataset rediscovery):** curate `java21-migration-dataset.json` as distinct-owner lineage samples per (oldest-Java-version × dependency family) cell, where oldest-Java-version ∈ {8, 11, 17} and dependency family ∈ the popular dependencies that OpenRewrite targets as having breaking changes for Java 21 migration. Each entry is a *lineage* — one repo tracked across its Java-version history, with a `commit_sha` recorded at every Java version from the oldest through 21, and each `commit_sha` baseline-buildable inside the runner container under the JDK matching that commit's declared Java version. Iterate candidates through a ralph loop, balancing the matrix.
+5. **Fitness (vLLM spin-up):** stand up an OpenAI-compatible chat-completion endpoint serving a tool-capable model.
+    - **Constraints:** rejects unauthenticated requests; reachable from inside runner containers; contract with items 4, 7, 13 — endpoint accepts authenticated tool-capable chat completions from within their containers.
+    - **Search:** ralph loop over container, model, and reverse-proxy config.
+    - **Reward:** consuming items report uninterrupted service.
+    - **Repeat:** on any consumer reporting degraded service.
+6. **Fitness (dataset rediscovery):** curate a corpus of lineages — repos tracked across their Java-version history.
+    - **Constraints:** each entry is one repo with `commit_sha` recorded at every observed Java version, each commit baseline-buildable on its matching JDK; distinct-owner sampling per (oldest-Java-version × dependency family) cell; contract with items 4 and 13 — emits `java21-migration-dataset.json` whose entries are the corpus item 4 measures recipes against and the ground-truth commits item 13 extracts human-intents from.
+    - **Search:** ralph loop over candidate repos, widening discovery on under-represented (oldest-Java-version × family) cells.
+    - **Reward:** coverage in under-represented cells; fraction of entries where every commit is baseline-buildable.
+    - **Repeat:** continuous; paused when downstream items are saturated on the current corpus.
 
 7. **Fitness (per-failing-repo refinement):** raise the corpus build-success rate past where coarse recipe mutations plateau, leveraging vLLM Qwen 3.6 27B FP8 and Claude as solution-finder + judges throughout.
    - **Constraints:** declarative configuration deltas only; contract with item 4 — wins (build_post 0→1 flips on the corpus) fold into item 4's corpus build-success aggregate.
@@ -55,7 +63,7 @@
     - **Repeat:** whenever a new noisy stream enters the loop.
 
 13. **Fitness (intent coverage):** measure recipe-vs-human as overlap of intents, per stage.
-    - **Constraints:** intents are typed atoms extracted from diffs of each side against the same source baseline; each intent is bucketed as breaking (build won't pass without it on the target JDK) or polishment (build passes without it); not bytes.
+    - **Constraints:** intents are typed atoms extracted from diffs of each side against the same source baseline; each intent is bucketed as breaking (build won't pass without it on the target JDK) or polishment (build passes without it); not bytes; contract with item 4 — per (repo, stage) intent overlap is emitted with breaking and polishment coverage reported separately, consumable by item 4's reward.
     - **Search:** per stage, extract recipe-intents and human-intents with their buckets; intersect; surface recipe-only and human-only sets; on the intersection, compare implementations.
     - **Reward:** breaking-intent coverage first, polishment second; minimize recipe-intent rejection rate; minimize implementation divergence on shared intents.
     - **Repeat:** alongside item 4's loop; recompute on every composition mutation.
