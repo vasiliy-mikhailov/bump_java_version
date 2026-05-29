@@ -16,7 +16,14 @@ for ln in open('/home/vmihaylov/java_8_11_17_to_java_21/.env'):
 if len(sys.argv) != 2:
     print(__doc__); sys.exit(2)
 slug = sys.argv[1]
-TRAJ = f'/home/vmihaylov/java_8_11_17_to_java_21/attempt_8/per_repo_iter/{slug}/trajectory.json'
+# Default: read FAIL observations from attempt_9 (current Qwen partial-info baseline).
+# Override via OH_TRAJ_DIR for ad-hoc replays of older attempts.
+TRAJ_DIR = os.environ.get('OH_TRAJ_DIR',
+                          '/home/vmihaylov/java_8_11_17_to_java_21/attempt_9/per_repo_iter')
+TRAJ = f'{TRAJ_DIR}/{slug}/trajectory.json'
+# Findings persist under attempt_10/investigator_findings/<slug>.json.
+FINDINGS_DIR = '/home/vmihaylov/java_8_11_17_to_java_21/attempt_10/investigator_findings'
+os.makedirs(FINDINGS_DIR, exist_ok=True)
 t = json.load(open(TRAJ))
 stage = t['stage']
 obs = t['history'][-1]['observation'][:3000]
@@ -128,5 +135,11 @@ for ev in conv.state.events:
 print('\n=== final agent text (last MessageEvent):')
 print((last_agent_text or '(none)')[-1500:])
 print('\n=== parsed finding:')
-print(json.dumps(finding, indent=2) if finding else '(no JSON parsed)')
+if finding:
+    print(json.dumps(finding, indent=2))
+    with open(f'{FINDINGS_DIR}/{slug}.json', 'w') as f:
+        json.dump({'wall_s': wall, 'events': len(conv.state.events), 'finding': finding}, f, indent=2)
+    print(f'\npersisted: {FINDINGS_DIR}/{slug}.json')
+else:
+    print('(no JSON parsed)')
 print(f'\nworkdir kept for inspection: {workdir}')
