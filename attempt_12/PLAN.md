@@ -10,12 +10,12 @@ made baseline quality a *curation* chore (the junk-baseline drops in a10 and a11
 
 ## What changes
 
-The dataset is now **repo names only** (`repos.json`, 432 unique repos). Shas are **sampled per
+The dataset is now **repo names only** (`dataset-repos.json`, 432 unique repos). Shas are **sampled per
 run**:
 
 - `tools/sample_shas.py --seed N [--k K] [--compile-check]` clones each repo, samples `K`
   seeded-random commits, detects `jv_from` from the pom, and emits
-  `dataset_seed<N>.json = [{repo, sha, jv_from, jv_to}]` where `jv_to` is the next LTS
+  `dataset-shas.json = [{repo, sha, jv_from, jv_to}]` where `jv_to` is the next LTS
   (8→11, 11→17, 17→21).
 - A **different `--seed` per attempt/run ⇒ different shas**, so the eval is a moving target.
 - Validity is a **runtime filter**, not curation: with `--compile-check`, a sampled commit is
@@ -39,7 +39,7 @@ The `bump_java_version` skill (`.agents/skills/...`), the recipe catalog
 
 ## Eval loop (per optimization round)
 
-1. `sample_shas.py --seed=<round> --compile-check` → fresh `dataset_seed<round>.json`.
+1. `sample_shas.py --seed=<round> --compile-check` → fresh `dataset-shas.json`.
 2. Run the skill (production rung: OpenHands+Qwen) over that dataset; verdict = pom ≥ `jv_to`
    AND baseline-passing tests still pass.
 3. Score; keep skill/recipe edits that improve the **mean across seeds** (generalization),

@@ -1,6 +1,7 @@
 """attempt-12 sha-sampler: repo-list -> per-run randomized *valid* baselines.
 
-Dataset is repos.json (repo names only). For each repo, walk its commits in seeded-random
+Contract: reads dataset-repos.json (repo names only), writes dataset-shas.json (the sampled
+baselines for this run; regenerated each round). For each repo, walk its commits in seeded-random
 order and accept the FIRST commit that (a) declares Java 8/11/17 in its pom AND (b) compiles
 under that JDK (`mvn test-compile`). Bounded by --max-attempts compile checks (default 10).
 
@@ -9,7 +10,7 @@ eval is a moving target the skill/recipes must generalize to. jv_to = next LTS (
 17->21). Junk (no-pom / already>=21 / non-compiling) is rejected by the search itself.
 
 Usage: python3 sample_shas.py --seed N [--max-attempts 10] [--scan-cap 150] [--limit M] [--repos a/b,c/d]
-Output: attempt_12/dataset_seed<N>.json = [{repo, sha, jv_from, jv_to, attempts}]
+Output: attempt_12/dataset-shas.json = [{repo, sha, jv_from, jv_to, attempts}] (regenerated per run)
 """
 import json, subprocess, sys, os, random
 A = "/home/vmihaylov/java_8_11_17_to_java_21/attempt_12"
@@ -26,7 +27,7 @@ MAX_ATTEMPTS = int(arg("--max-attempts", "10"))   # max COMPILE attempts per rep
 SCAN_CAP = int(arg("--scan-cap", "150"))          # max commits inspected for eligibility (cheap)
 LIMIT = arg("--limit"); REPOS_OVERRIDE = arg("--repos")
 rng = random.Random(SEED)
-REPOS = REPOS_OVERRIDE.split(",") if REPOS_OVERRIDE else json.load(open(A + "/repos.json"))
+REPOS = REPOS_OVERRIDE.split(",") if REPOS_OVERRIDE else json.load(open(A + "/dataset-repos.json"))
 if LIMIT:
     REPOS = REPOS[:int(LIMIT)]
 
@@ -76,7 +77,7 @@ for repo in REPOS:
         print(f"  NO-VALID-BASELINE {repo} (scanned {scanned}, {compiles} compile attempts)", flush=True)
     sh("rm -rf " + wd, 60)
 
-ds = A + f"/dataset_seed{SEED}.json"
+ds = A + "/dataset-shas.json"
 json.dump(out, open(ds, "w"), indent=1)
 print(f"\nSEED={SEED} max_attempts={MAX_ATTEMPTS}: {len(out)}/{len(REPOS)} repos got a valid compiling "
-      f"8/11/17 baseline -> dataset_seed{SEED}.json", flush=True)
+      f"8/11/17 baseline -> dataset-shas.json (seed {SEED})", flush=True)
