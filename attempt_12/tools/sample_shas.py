@@ -1,30 +1,31 @@
-"""attempt-12 sha-sampler: repo-list -> per-run randomized baselines.
+"""attempt-12 sha-sampler: repo-list -> per-run randomized *valid* baselines.
 
-Dataset is repos.json (repo names only). Each run samples K random commits per repo,
-detects jv_from from the pom, and (optionally) keeps only baselines that compile under
-jv_from. A different --seed yields different shas, so the eval is a moving target the
-skill/recipes must generalize to (anti-overfitting).
+Dataset is repos.json (repo names only). For each repo, walk its commits in seeded-random
+order and accept the FIRST commit that (a) declares Java 8/11/17 in its pom AND (b) compiles
+under that JDK (`mvn test-compile`). Bounded by --max-attempts compile checks (default 10).
 
-Usage: python3 sample_shas.py --seed N [--k 1] [--limit M] [--repos a/b,c/d] [--compile-check]
-Output: attempt_12/dataset_seed<N>.json = [{repo, sha, jv_from, jv_to}]
+A different --seed => different random order => (usually) a different accepted sha, so the
+eval is a moving target the skill/recipes must generalize to. jv_to = next LTS (8->11, 11->17,
+17->21). Junk (no-pom / already>=21 / non-compiling) is rejected by the search itself.
+
+Usage: python3 sample_shas.py --seed N [--max-attempts 10] [--scan-cap 150] [--limit M] [--repos a/b,c/d]
+Output: attempt_12/dataset_seed<N>.json = [{repo, sha, jv_from, jv_to, attempts}]
 """
 import json, subprocess, sys, os, random
 A = "/home/vmihaylov/java_8_11_17_to_java_21/attempt_12"
-NEXT = {8: 11, 11: 17, 17: 21}  # one LTS hop; jv_to = next LTS
+NEXT = {8: 11, 11: 17, 17: 21}  # bumpable LTS -> next LTS
 
-def arg(name, default=None):
+def arg(n, d=None):
     for a in sys.argv:
-        if a.startswith(name + "="):
+        if a.startswith(n + "="):
             return a.split("=", 1)[1]
-    return default
+    return d
 
 SEED = int(arg("--seed", "0"))
-K = int(arg("--k", "1"))
-LIMIT = arg("--limit")
-REPOS_OVERRIDE = arg("--repos")
-COMPILE_CHECK = "--compile-check" in sys.argv
+MAX_ATTEMPTS = int(arg("--max-attempts", "10"))   # max COMPILE attempts per repo
+SCAN_CAP = int(arg("--scan-cap", "150"))          # max commits inspected for eligibility (cheap)
+LIMIT = arg("--limit"); REPOS_OVERRIDE = arg("--repos")
 rng = random.Random(SEED)
-
 REPOS = REPOS_OVERRIDE.split(",") if REPOS_OVERRIDE else json.load(open(A + "/repos.json"))
 if LIMIT:
     REPOS = REPOS[:int(LIMIT)]
@@ -49,24 +50,33 @@ for repo in REPOS:
     sh(f"git clone -q https://github.com/{repo} {wd}", 600)
     if not os.path.isdir(wd + "/.git"):
         print("CLONE-FAIL", repo, flush=True); continue
-    commits = sh(f"git -C {wd} log --pretty=%H", 60).stdout.split()
-    if not commits:
-        sh("rm -rf " + wd, 60); continue
-    for sha in rng.sample(commits, min(K, len(commits))):
+    commits = sh(f"git -C {wd} log --all --pretty=%H", 60).stdout.split()
+    rng.shuffle(commits)
+    accepted = None; compiles = 0; scanned = 0
+    for sha in commits:
+        if scanned >= SCAN_CAP or compiles >= MAX_ATTEMPTS:
+            break
+        scanned += 1
         sh(f"git -C {wd} checkout -q {sha} 2>/dev/null", 60)
         if not os.path.isfile(wd + "/pom.xml"):
-            print("  no-pom", repo, sha[:8], flush=True); continue
+            continue                       # cheap reject: no pom (doesn't count as a compile attempt)
         jv = detect_jv(wd)
-        if jv is None or jv not in NEXT:
-            print("  skip(jv=%s)" % jv, repo, sha[:8], flush=True); continue
-        if COMPILE_CHECK:
-            rc = sh(f"export PATH=$HOME/bin:$PATH; cd {wd} && JDK={jv} mvn -q -B -ntp -DskipTests compile", 600).returncode
-            if rc != 0:
-                print("  baseline-noncompile", repo, sha[:8], "jv", jv, flush=True); continue
-        out.append({"repo": repo, "sha": sha, "jv_from": jv, "jv_to": NEXT[jv]})
-        print("  OK", repo, sha[:8], f"jv {jv}->{NEXT[jv]}", flush=True)
+        if jv not in NEXT:
+            continue                       # cheap reject: not 8/11/17 (e.g. already 21)
+        compiles += 1                      # this IS a compile attempt
+        rc = sh(f"export PATH=$HOME/bin:$PATH; cd {wd} && JDK={jv} mvn -q -B -ntp -DskipTests test-compile", 600).returncode
+        if rc == 0:
+            accepted = {"repo": repo, "sha": sha, "jv_from": jv, "jv_to": NEXT[jv], "attempts": compiles}
+            print(f"  FOUND {repo} {sha[:8]} jv {jv}->{NEXT[jv]} (compile attempt {compiles}/{MAX_ATTEMPTS})", flush=True)
+            break
+        print(f"  noncompile {repo} {sha[:8]} jv {jv} (attempt {compiles}/{MAX_ATTEMPTS})", flush=True)
+    if accepted:
+        out.append(accepted)
+    else:
+        print(f"  NO-VALID-BASELINE {repo} (scanned {scanned}, {compiles} compile attempts)", flush=True)
     sh("rm -rf " + wd, 60)
 
 ds = A + f"/dataset_seed{SEED}.json"
 json.dump(out, open(ds, "w"), indent=1)
-print(f"\nSEED={SEED} K={K} compile_check={COMPILE_CHECK}: {len(out)} valid baselines -> dataset_seed{SEED}.json")
+print(f"\nSEED={SEED} max_attempts={MAX_ATTEMPTS}: {len(out)}/{len(REPOS)} repos got a valid compiling "
+      f"8/11/17 baseline -> dataset_seed{SEED}.json", flush=True)
