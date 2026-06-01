@@ -40,7 +40,7 @@ import urllib.request
 from pathlib import Path
 
 
-VLLM_BASE = os.environ.get("VLLM_BASE_URL", "https://inference.mikhailov.tech/v1")
+VLLM_BASE = os.environ.get("VLLM_BASE_URL", "https://inference.mikhailov.tech/qwen-3.6-27b-fp8/v1")
 VLLM_KEY  = os.environ.get("VLLM_API_KEY")
 MODEL     = os.environ.get("VLLM_MODEL", "qwen3.6-27b-fp8")
 MAX_DIFF_CHARS = 90_000   # keep well under the 128k context with prompt overhead
