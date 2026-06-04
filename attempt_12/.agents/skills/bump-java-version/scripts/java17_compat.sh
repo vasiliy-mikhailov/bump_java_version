@@ -50,4 +50,24 @@ if root:
             else: s=s.replace("</project>","<build><plugins>"+plug+"</plugins></build></project>",1)
         open(root,"w").write(s); print("surefire --add-opens injected into "+root)
 PY
+# JaCoCo's bundled ASM can't read Java 17/21 bytecode (java.lang.IllegalArgumentException:
+# Unsupported class file major version 61/65 at org.jacoco...asm.ClassReader). Bump the pinned
+# jacoco-maven-plugin to 0.8.12 (reads JDK 8..21). Only fires if jacoco is pinned at an old version.
+echo "=== [jacoco_compat] bumping old JaCoCo (if pinned) to JDK17/21-aware 0.8.12" >&2
+python3 - <<'PY'
+import glob, re
+NEW="0.8.12"
+poms=sorted(set(glob.glob("pom.xml")+glob.glob("*/pom.xml")+glob.glob("*/*/pom.xml")), key=len)
+for p in poms:
+    s=open(p).read(); orig=s
+    # property form: <jacoco.version>0.8.5</...>, <jacoco-maven-plugin.version>..</..>, <jacoco-maven.version>..</..>
+    s=re.sub(r"(<jacoco[a-z.-]*\.version>)\s*0\.(?:7\.[0-9]+|8\.(?:[0-9]|1[01])(?:\.[0-9]+)?)\s*(</jacoco[a-z.-]*\.version>)",
+             r"\g<1>"+NEW+r"\g<2>", s)
+    # literal: <artifactId>jacoco-maven-plugin</artifactId> ... <version>0.8.5</version>
+    s=re.sub(r"(<artifactId>jacoco-maven-plugin</artifactId>\s*<version>)\s*0\.(?:7\.[0-9]+|8\.(?:[0-9]|1[01])(?:\.[0-9]+)?)\s*(</version>)",
+             r"\g<1>"+NEW+r"\g<2>", s, flags=re.S)
+    if s!=orig:
+        open(p,"w").write(s); print("bumped JaCoCo in "+p)
+PY
+
 echo "=== java17_compat complete" >&2
