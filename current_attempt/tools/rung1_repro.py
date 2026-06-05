@@ -22,8 +22,13 @@ def main():
     bump = os.path.join(SCRIPTS, f"bump_{jf}_to_{jt}.sh")
     assert os.path.exists(bump), f"no attempt bump script: {bump}"
     work = f"/tmp/rung1_{repo.replace('/', '_')}"
+    # Build phases run Maven as root in the container, leaving root-owned files a host-user
+    # rmtree cannot delete (P6). Clear via a throwaway root container before reusing the dir.
+    import repro_lib
+    subprocess.run(["docker", "run", "--rm", "-v", "/tmp:/t", "--entrypoint", "sh", repro_lib.IMAGE,
+                    "-c", f"rm -rf /t/{os.path.basename(work)}"], capture_output=True, timeout=120)
     shutil.rmtree(work, ignore_errors=True)
-    os.makedirs(work)
+    os.makedirs(work, exist_ok=True)
     if not shallow_fetch(repo, sha, work):
         print("FETCH_FAILED"); return
     proj = os.path.join(work, proj_sub) if proj_sub else work
