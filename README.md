@@ -146,32 +146,45 @@ reachable via SSH alias `mh` at `$HOME/java_8_11_17_to_java_21`. Write a fresh
 `README.md` at the repo root with these sections, in this order:
 
 1. Title + one-paragraph purpose.
-2. Approach: name AGENTS.md's dominanta cluster structure (meta = Dominanta 1;
-   recipe and its experimental setup = Dominanta 2–3; substrate = Dominanta 4–9).
-   Note that a dominanta is a self-amplifying attentional and motivational
-   attractor — only one in foreground at a time per Ukhtomsky's principle.
-   Then summarise how Dominanta 2 (the recipe) has evolved across attempts:
-   chain-based for attempts 1–9, prompt + agent runtime for attempt 10. Per-repo
-   trajectories persist under `attempt_N/per_repo_iter/<slug>/trajectory.json`
-   and the baseline is the one-shot `UpgradeToJava<jv_to>` recipe.
+2. Approach: name AGENTS.md's Problem cluster structure (meta = P1; recipe and
+   its experimental setup = P2–P4; substrate = P5–P10). AGENTS.md numbers its ten
+   concerns `Problem (Pn)`; note that a problem is a self-amplifying attractor —
+   one autonomous concern with a single Reward and trigger, only one in foreground
+   at a time per Ukhtomsky's principle. Then summarise how the recipe (P2) has
+   evolved across attempts: an OpenRewrite chain the harness applied for attempts
+   1–9; a paste-into-any-agent prompt + agent runtime for attempt 10; repackaged as
+   the portable `bump-java-version` skill for attempt 11; and, by attempt 14, a
+   single self-contained `SKILL.md` hand manual (standard tools only — JDKs, Maven,
+   OpenRewrite from Maven Central; no bundled scripts) the agent follows by hand,
+   hardened by P3 across a three-agent panel (`opencode`/`kilocode`/`openhands`, the
+   same Qwen, one harness). Per-repo trajectories persist under
+   `attempt_N/per_repo_iter/<slug>/trajectory.json` and the baseline is the
+   one-shot `UpgradeToJava<jv_to>` recipe.
 3. Results so far: a table of champion PASS rates across the attempts present
    under `attempt_*/` directories (count `attempt_N/per_repo_iter/*/trajectory.json`
    with `jq -r .final_verdict` for live numbers). For attempts 1–6 pull from
    that attempt's README.md / RESULTS.md / REPORT.md / recipes.yml. For attempts
-   7–9 compute PASS rate from trajectory.json files. For attempt 10 report
-   architectural validation status (number of manual stage runs + condenser
-   firing pattern) rather than a corpus PASS rate if the corpus sweep is not
-   yet complete.
-4. Current winner recipe: the attempt 8 default sequenced chain emitted by
-   `attempt_7/tools/run_sequenced_java.py::plan_for()`, presented as
-   `(label, jdk, recipes)` rows. Plus one paragraph on attempt 10's experimental
-   artifact (the prompt + agent-runtime model) and where its driver lives.
+   7–9 compute PASS rate from trajectory.json files. For the agent-driven attempts
+   (10+) report the three-agent panel PASS rate, or architectural-validation
+   status if a corpus sweep is mid-flight.
+4. Current winner recipe / resulting skill: the largest measured deterministic
+   chain (attempt 8's sequenced `(label, jdk, recipes)` rows from
+   `attempt_7/tools/run_sequenced_java.py::plan_for()`) for historical context,
+   then the current deliverable — the manual-only `bump-java-version` skill
+   (`current_attempt/.agents/skills/bump-java-version/SKILL.md`): one self-contained
+   hand manual, no scripts, with its contract (PASS = `mvn compile` under `jv_to`
+   AND pre-pass tests ⊆ post-pass tests) and the three-agent panel that validates
+   it (`current_attempt/portability/agent_drive_one.sh`).
 5. Repo layout: terse tree of the attempts and the per-attempt tool layout.
-   Mention attempt_10/prompt.md, oh_drive.py, oh_one_live.py, oh_event_sink.py.
-6. Infrastructure: one line each for the substrate dominantas (Dominanta 4 proxy,
-   Dominanta 5 local environment, Dominanta 6 vLLM spin-up, Dominanta 7 agent
-   runtime spin-up, Dominanta 8 runner saturation, Dominanta 9 compact
-   observations) — read AGENTS.md Dominanta 4–9 for the canonical wording.
+   Mention the skill (`current_attempt/.agents/skills/bump-java-version/SKILL.md`),
+   the unified three-agent panel harness
+   (`current_attempt/portability/agent_drive_one.sh`, `agent_sweep.py`, `oh_run.py`),
+   the per-round dataset (`current_attempt/dataset-shas.json` + `dataset-repos.json`),
+   and the frozen `attempt_N/` snapshots.
+6. Infrastructure: one line each for the substrate problems (P5 proxy dependency
+   resolution, P6 local environment, P7 vLLM spin-up, P8 agent runtime spin-up,
+   P9 runner saturation, P10 compact observations) — read AGENTS.md P5–P10 for the
+   canonical wording.
 7. "How to recreate this README": include THIS very prompt verbatim inside a
    fenced code block, prefaced by the note that any agent can regenerate the
    README by running it.
@@ -191,6 +204,6 @@ say where, and report the subagent's verification verdict.
 
 Constraints:
 - Sentence case in headings.
-- No prose justifications next to rules (per Dominanta 1 in AGENTS.md).
+- No prose justifications next to rules (per P1 in AGENTS.md).
 - Numbers come from the artifacts on disk, never invented.
 ```
