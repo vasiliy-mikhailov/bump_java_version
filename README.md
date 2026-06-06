@@ -1,4 +1,4 @@
-# java_8_11_17_to_java_21
+# bump_java_version
 
 Bump a Maven project **one Java LTS step** (8→11, 11→17, 17→21, 21→25) so it still compiles under the new JDK and **every test that passed before still passes** — automated by a single portable skill, leaving humans only the per-project residual.
 
@@ -102,7 +102,9 @@ You are extending a Java LTS migration project. The repo root is on a remote hos
 reachable via SSH alias `mh` at `$HOME/java_8_11_17_to_java_21`. Write a fresh
 `README.md` at the repo root, USAGE-FIRST, with these sections in order:
 
-1. Title + a one-paragraph purpose: bump a Maven project one Java LTS step
+1. Title (`bump_java_version`, the GitHub repo name; the host working directory is
+   still `$HOME/java_8_11_17_to_java_21`) + a one-paragraph purpose: bump a Maven
+   project one Java LTS step
    (8→11, 11→17, 17→21, 21→25), conserving every previously-passing test.
 2. ## Usage — the prominent hero section. State that the deliverable is one
    self-contained skill `current_attempt/.agents/skills/bump-java-version/SKILL.md`
