@@ -31,7 +31,7 @@ Kept in sync as PRs are opened / merged / bailed.
 | jdemetra/jdplus-main | [#863](https://github.com/jdemetra/jdplus-main/issues/863) | 21→25 | `maven-enforcer-plugin` fails even under JDK 21 — no green baseline to conserve |
 | datastax/cassandra-data-migrator | — | 11→17 | Spark/**Scala** project — outside the skill's clean Java-Maven scope |
 | s4u/api-java-samples | — | — | 0 tests — nothing to conserve |
-| UKHomeOffice/MoPat | — | — | university-hosted dep `de.unimuenster.imi:org.cdisc.odm.v132` not resolvable from Central |
+| imi-ms/MoPat (& UKHomeOffice fork) | 14 | 17→21 | **dep bail RECOVERED** — `de.unimuenster.imi:org.cdisc.odm.v132:2.0.2` now resolves via a Nexus proxy of the project's public **GitLab** package registry (`imigitlab.uni-muenster.de`) added to `maven-public`. But 17→21 then hit a *different* wall: 629 tests pass without a DB under JDK 17, yet the ancient **c3p0** pool crashes the forked test JVM under JDK 21 (0 reports) — needs a live DB + pool/`--add-opens` fix, beyond a clean bump |
 | sysprog21/shecc | — | — | author's GitHub-Packages libs (`net.filipvanlaenen:kolektoj`/`tsvgj`) not resolvable |
 | nebula-contrib/ngbatis | — | 8→21 | **0 runnable unit tests** (tests need a live Nebula Graph DB) — nothing to conserve |
 | ravindraAmbati/pet-clinic | [#96](https://github.com/ravindraAmbati/pet-clinic/issues/96) | 8→11 | `wro4j-maven-plugin` has a disjoint `org.webjars.npm:minimatch` version-range conflict (`[3.0.2,3.1)` vs `[3.1.1,4)`) — fragile web-resource build, not worth forcing for ★1 |
