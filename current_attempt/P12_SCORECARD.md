@@ -23,6 +23,7 @@ Kept in sync as PRs are opened / merged / bailed.
 | rigd-loxia/builder-generator | 2 | [#36](https://github.com/rigd-loxia/builder-generator/issues/36) | 11→17 | compiler 11→17 (both modules) + maven-compiler-plugin 3.11→3.15 + **enforcer `EnforceBytecodeVersion` maxJdkVersion 11→17** (else it bans the project's own J17 annotations jar) + modernizer 1.11→1.17 | 45/45 | [#61](https://github.com/rigd-loxia/builder-generator/pull/61) | open |
 | codeforkjeff/conciliator | 126 | [#34](https://github.com/codeforkjeff/conciliator/issues/34) | **11→17→21 (P14 multi-step)** | chained both hops + **Spring Boot 2.7.3→3.3.13 / javax→jakarta** (`UpgradeSpringBoot_3_3`, version-aligned recipes) + JaCoCo 0.8.8→0.8.12 + Dockerfile both stages 11→21. _resolves #34 fully_ | 39/39 | [#38](https://github.com/codeforkjeff/conciliator/pull/38) | open |
 | thelastpickle/cassandra-reaper | 516 | [#1437](https://github.com/thelastpickle/cassandra-reaper/issues/1437) | **11→21 (P14 multi-step)** | compiler `release` 11→21 + enforcer `build.jdk.minimum` 11→21 + JaCoCo 0.8.6→0.8.12 + Mockito 4.4.0→5.14.2 (ByteBuddy/J21) + 2 Dockerfiles corretto 11→21. Dep `io.k8ssandra:datastax-mgmtapi-client-openapi` resolved from **GitHub Packages** (not Central); validated with **full `mvn install` incl. npm/webpack UI** | 516/516 | [#1687](https://github.com/thelastpickle/cassandra-reaper/pull/1687) | open |
+| filipvanlaenen/shecc | 2 | [#63](https://github.com/filipvanlaenen/shecc/issues/63) | 17→21 | `java.version` 17→21. **Bail recovery:** deps (`kolektoj`/`tsvgj`/`bltxmlepj`) are the author's sibling libs on no registry — built from source and **hand-deployed to Nexus `maven-releases`** | 120/120 | [#68](https://github.com/filipvanlaenen/shecc/pull/68) | open |
 
 ## Bailed (no clean PASS → no PR, per P12 discipline)
 
@@ -32,13 +33,13 @@ Kept in sync as PRs are opened / merged / bailed.
 | datastax/cassandra-data-migrator | — | 11→17 | Spark/**Scala** project — outside the skill's clean Java-Maven scope |
 | s4u/api-java-samples | — | — | 0 tests — nothing to conserve |
 | imi-ms/MoPat (& UKHomeOffice fork) | 14 | 17→21 | **dep bail RECOVERED** — `de.unimuenster.imi:org.cdisc.odm.v132:2.0.2` now resolves via a Nexus proxy of the project's public **GitLab** package registry (`imigitlab.uni-muenster.de`) added to `maven-public`. But 17→21 then hit a *different* wall: 629 tests pass without a DB under JDK 17, yet the ancient **c3p0** pool crashes the forked test JVM under JDK 21 (0 reports) — needs a live DB + pool/`--add-opens` fix, beyond a clean bump |
-| sysprog21/shecc | — | — | author's GitHub-Packages libs (`net.filipvanlaenen:kolektoj`/`tsvgj`) not resolvable |
+| ~~filipvanlaenen/shecc~~ | **RECOVERED → opened** (see Opened PRs) — deps weren't on any registry (author's sibling libs); built `kolektoj`/`bltxmlepj`/`tsvgj` 1.0.0 from source and **hand-deployed to Nexus `maven-releases`** | | |
 | nebula-contrib/ngbatis | — | 8→21 | **0 runnable unit tests** (tests need a live Nebula Graph DB) — nothing to conserve |
 | ravindraAmbati/pet-clinic | [#96](https://github.com/ravindraAmbati/pet-clinic/issues/96) | 8→11 | `wro4j-maven-plugin` has a disjoint `org.webjars.npm:minimatch` version-range conflict (`[3.0.2,3.1)` vs `[3.1.1,4)`) — fragile web-resource build, not worth forcing for ★1 |
 
 ## Tally
 
-- **15 PRs opened** across 14 repos (incl. one hand-written tested HttpClient/AWS-v2 refactor and two **P14 multi-step** PRs: conciliator 11→21 w/ Spring Boot 2→3/jakarta, and cassandra-reaper ★516 11→21 w/ GitHub-Packages dep + full-`mvn install` UI validation), all 4 LTS hops covered, every bump verified green under the repo's own CI command.
+- **16 PRs opened** across 15 repos (incl. one hand-written tested HttpClient/AWS-v2 refactor and two **P14 multi-step** PRs: conciliator 11→21 w/ Spring Boot 2→3/jakarta, and cassandra-reaper ★516 11→21 w/ GitHub-Packages dep + full-`mvn install` UI validation), all 4 LTS hops covered, every bump verified green under the repo's own CI command.
 - **`detect_jv` finding** (from recovering cassandra-reaper, per the operator's "j11-gift" insight): the feed reads the compiler `source`/`target` (which projects set to an *old* version for bytecode compat) instead of the real build floor (enforcer `requireJavaVersion` / `release` / CI JDK), so multi-step requests can be mis-routed with a phantom extra hop. Fix candidate for P4: honor the enforcer floor when present.
 - **1 MERGED** (the primary reward — ground-truth adoption): `mars-sim/mars-sim` #1959 (21→25), merged by the maintainer with thanks. First demand PR landed.
 - **5 bailed** on P12 discipline (no green baseline / out of scope / unresolvable deps).
