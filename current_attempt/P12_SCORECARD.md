@@ -40,7 +40,7 @@ Kept in sync as PRs are opened / merged / bailed.
 
 ## Tally
 
-- **17 PRs opened** across 16 repos (incl. one hand-written tested HttpClient/AWS-v2 refactor and two **P14 multi-step** PRs: conciliator 11→21 w/ Spring Boot 2→3/jakarta, and cassandra-reaper ★516 11→21 w/ GitHub-Packages dep + full-`mvn install` UI validation), all 4 LTS hops covered, every bump verified green under the repo's own CI command.
+- **17 PRs opened** across 16 repos (incl. one hand-written tested HttpClient/AWS-v2 refactor and **three P14 multi-step** PRs: conciliator 11→21 w/ Spring Boot 2→3/jakarta, cassandra-reaper ★516 11→21 w/ GitHub-Packages dep + full-`mvn install` UI validation, and jexunit-core 8→21 pure 3-hop ladder), all 4 LTS hops covered, every bump verified green under the repo's own CI command.
 - **`detect_jv` finding** (from recovering cassandra-reaper, per the operator's "j11-gift" insight): the feed reads the compiler `source`/`target` (which projects set to an *old* version for bytecode compat) instead of the real build floor (enforcer `requireJavaVersion` / `release` / CI JDK), so multi-step requests can be mis-routed with a phantom extra hop. Fix candidate for P4: honor the enforcer floor when present.
 - **1 MERGED** (the primary reward — ground-truth adoption): `mars-sim/mars-sim` #1959 (21→25), merged by the maintainer with thanks. First demand PR landed.
 - **5 bailed** on P12 discipline (no green baseline / out of scope / unresolvable deps).
