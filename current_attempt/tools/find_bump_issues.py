@@ -18,14 +18,37 @@ BAD = re.compile(r"connector|mysql|\.time|jzlib|\basm\b|codegen|driver|-java\b|j
 def gh(*a):
     return subprocess.run(["gh", "api"] + list(a), capture_output=True, text=True)
 
+def _norm_jv(num):
+    num = (num or "").strip()
+    try:
+        return int(num[2:].split(".")[0]) if num.startswith("1.") and len(num) > 2 else int(num.split(".")[0])
+    except ValueError:
+        return None
+
+
 def detect_jv(text):
+    # The real build floor is the MAX of: compiler source/target/release, java.version, AND the
+    # maven-enforcer requireJavaVersion lower bound — projects routinely keep compiler target low
+    # (bytecode compat) while requiring a newer JDK to build (cassandra-reaper: target 8 but enforcer
+    # build.jdk.minimum=11). Reading only compiler tags mis-routes such requests (phantom extra hop).
+    props = dict(re.findall(r"<([a-zA-Z0-9_.\-]+)>([^<>${}]*)</\1>", text))  # for ${...} resolution
+
+    def resolve(s):
+        for _ in range(4):
+            m = re.search(r"\$\{([^}]+)\}", s)
+            if not m:
+                break
+            s = s.replace(m.group(0), props.get(m.group(1), ""))
+        return s
+
     vs = []
     for m in re.finditer(r"<(?:maven\.compiler\.(?:release|source|target)|java\.version|release|source)>([0-9][0-9.]*)", text):
-        num = m.group(1)
-        try:
-            v = int(num[2:].split(".")[0]) if num.startswith("1.") and len(num) > 2 else int(num.split(".")[0])
-        except ValueError:
-            continue
+        v = _norm_jv(m.group(1))
+        if v in (8, 11, 17, 21, 25):
+            vs.append(v)
+    # enforcer requireJavaVersion lower bound (e.g. [11,) or [${build.jdk.minimum},) or 1.11)
+    for m in re.finditer(r"<requireJavaVersion>\s*<version>\s*\[?\s*([^,)\]\s<]+)", text):
+        v = _norm_jv(resolve(m.group(1)))
         if v in (8, 11, 17, 21, 25):
             vs.append(v)
     return max(vs) if vs else None
