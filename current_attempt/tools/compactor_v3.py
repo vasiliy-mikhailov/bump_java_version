@@ -72,6 +72,34 @@ def init_offsets_at_end():
     print(f"init offsets: {offsets}", flush=True)
 
 
+OFFSETS_FILE = "/home/vmihaylov/.compactor.offsets"  # outside /var/log so Vector doesn't tail it
+
+
+def save_offsets():
+    """Persist offsets after each successful compaction so a restart resumes where it
+    left off (never drops the backlog). Saved offsets reflect condensed data only."""
+    try:
+        tmp = OFFSETS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(offsets, f)
+        os.replace(tmp, OFFSETS_FILE)
+    except Exception:
+        pass
+
+
+def load_or_init_offsets():
+    """Resume from persisted offsets (process the backlog); only fall back to
+    end-of-file on a true cold start with no saved offsets."""
+    try:
+        with open(OFFSETS_FILE) as f:
+            saved = json.load(f)
+        for stream in STREAMS:
+            offsets[stream] = int(saved.get(stream, 0))
+        print(f"resumed offsets from {OFFSETS_FILE}: {offsets}", flush=True)
+    except Exception:
+        init_offsets_at_end()
+
+
 def tail_new_lines():
     for stream, path in STREAMS.items():
         if not os.path.exists(path): continue
@@ -165,11 +193,12 @@ def compact():
     print(f"COMPACT done. chunks={len(chunks)} sustained={sustained_final[:3]}", flush=True)
     buffer = buffer[-RECENT_KEEP:]
     last_deep = time.time()
+    save_offsets()
 
 
 def main():
-    print(f"compactor_v3 (clean): skip backlog, DEEP_REVIEW={DEEP_REVIEW_S}s, HARD_CAP={HARD_CAP} tok", flush=True)
-    init_offsets_at_end()
+    print(f"compactor_v3: resume backlog, DEEP_REVIEW={DEEP_REVIEW_S}s, HARD_CAP={HARD_CAP} tok", flush=True)
+    load_or_init_offsets()
     while True:
         tail_new_lines()
         if buffer:
