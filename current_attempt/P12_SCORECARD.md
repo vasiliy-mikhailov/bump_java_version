@@ -22,6 +22,7 @@ Kept in sync as PRs are opened / merged / bailed.
 | agido-malter/logback-elasticsearch-appender | 24 | [#45](https://github.com/agido-malter/logback-elasticsearch-appender/issues/45) | — (refactor) | **companion to #48, _resolves #45_**: `HttpURLConnection`→`java.net.http.HttpClient` (connection pooling) + AWS SigV4 v1→**SDK v2**. Hand-written, not a bump — validated by new tests (SigV4 known-answer, 4 WireMock transport, userInfo→Basic e2e) | 30/30 | [#49](https://github.com/agido-malter/logback-elasticsearch-appender/pull/49) | open |
 | rigd-loxia/builder-generator | 2 | [#36](https://github.com/rigd-loxia/builder-generator/issues/36) | 11→17 | compiler 11→17 (both modules) + maven-compiler-plugin 3.11→3.15 + **enforcer `EnforceBytecodeVersion` maxJdkVersion 11→17** (else it bans the project's own J17 annotations jar) + modernizer 1.11→1.17 | 45/45 | [#61](https://github.com/rigd-loxia/builder-generator/pull/61) | open |
 | codeforkjeff/conciliator | 126 | [#34](https://github.com/codeforkjeff/conciliator/issues/34) | **11→17→21 (P14 multi-step)** | chained both hops + **Spring Boot 2.7.3→3.3.13 / javax→jakarta** (`UpgradeSpringBoot_3_3`, version-aligned recipes) + JaCoCo 0.8.8→0.8.12 + Dockerfile both stages 11→21. _resolves #34 fully_ | 39/39 | [#38](https://github.com/codeforkjeff/conciliator/pull/38) | open |
+| thelastpickle/cassandra-reaper | 516 | [#1437](https://github.com/thelastpickle/cassandra-reaper/issues/1437) | **11→21 (P14 multi-step)** | compiler `release` 11→21 + enforcer `build.jdk.minimum` 11→21 + JaCoCo 0.8.6→0.8.12 + Mockito 4.4.0→5.14.2 (ByteBuddy/J21) + 2 Dockerfiles corretto 11→21. Dep `io.k8ssandra:datastax-mgmtapi-client-openapi` resolved from **GitHub Packages** (not Central); validated with **full `mvn install` incl. npm/webpack UI** | 516/516 | [#1687](https://github.com/thelastpickle/cassandra-reaper/pull/1687) | open |
 
 ## Bailed (no clean PASS → no PR, per P12 discipline)
 
@@ -32,13 +33,13 @@ Kept in sync as PRs are opened / merged / bailed.
 | s4u/api-java-samples | — | — | 0 tests — nothing to conserve |
 | UKHomeOffice/MoPat | — | — | university-hosted dep `de.unimuenster.imi:org.cdisc.odm.v132` not resolvable from Central |
 | sysprog21/shecc | — | — | author's GitHub-Packages libs (`net.filipvanlaenen:kolektoj`/`tsvgj`) not resolvable |
-| thelastpickle/cassandra-reaper | [#1437](https://github.com/thelastpickle/cassandra-reaper/issues/1437) | 8→21 | real build floor is already Java 11 (enforcer `build.jdk.minimum=1.11`); strict enforcer (`requirePluginVersions`/`reactorModuleConvergence`) + npm UI build in lifecycle + Cassandra acceptance ITs — too heavy |
 | nebula-contrib/ngbatis | — | 8→21 | **0 runnable unit tests** (tests need a live Nebula Graph DB) — nothing to conserve |
 | ravindraAmbati/pet-clinic | [#96](https://github.com/ravindraAmbati/pet-clinic/issues/96) | 8→11 | `wro4j-maven-plugin` has a disjoint `org.webjars.npm:minimatch` version-range conflict (`[3.0.2,3.1)` vs `[3.1.1,4)`) — fragile web-resource build, not worth forcing for ★1 |
 
 ## Tally
 
-- **14 PRs opened** across 13 repos (incl. one hand-written tested HttpClient/AWS-v2 refactor and the first **P14 multi-step** 11→21 with a Spring Boot 2→3/jakarta migration), all 4 LTS hops covered, every bump verified green under the repo's own CI command (`mvn verify`, or `mvn test` where that is the repo's actual CI gate).
+- **15 PRs opened** across 14 repos (incl. one hand-written tested HttpClient/AWS-v2 refactor and two **P14 multi-step** PRs: conciliator 11→21 w/ Spring Boot 2→3/jakarta, and cassandra-reaper ★516 11→21 w/ GitHub-Packages dep + full-`mvn install` UI validation), all 4 LTS hops covered, every bump verified green under the repo's own CI command.
+- **`detect_jv` finding** (from recovering cassandra-reaper, per the operator's "j11-gift" insight): the feed reads the compiler `source`/`target` (which projects set to an *old* version for bytecode compat) instead of the real build floor (enforcer `requireJavaVersion` / `release` / CI JDK), so multi-step requests can be mis-routed with a phantom extra hop. Fix candidate for P4: honor the enforcer floor when present.
 - **1 MERGED** (the primary reward — ground-truth adoption): `mars-sim/mars-sim` #1959 (21→25), merged by the maintainer with thanks. First demand PR landed.
 - **5 bailed** on P12 discipline (no green baseline / out of scope / unresolvable deps).
 - _Reward = merged PRs (primary)._ The feed's clean, resolvable tail is largely exhausted; re-run `find_bump_issues.py` later for fresh demand rather than grinding low-yield targets.
