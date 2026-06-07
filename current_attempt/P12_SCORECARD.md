@@ -32,6 +32,9 @@ Kept in sync as PRs are opened / merged / bailed.
 | s4u/api-java-samples | — | — | 0 tests — nothing to conserve |
 | UKHomeOffice/MoPat | — | — | university-hosted dep `de.unimuenster.imi:org.cdisc.odm.v132` not resolvable from Central |
 | sysprog21/shecc | — | — | author's GitHub-Packages libs (`net.filipvanlaenen:kolektoj`/`tsvgj`) not resolvable |
+| thelastpickle/cassandra-reaper | [#1437](https://github.com/thelastpickle/cassandra-reaper/issues/1437) | 8→21 | real build floor is already Java 11 (enforcer `build.jdk.minimum=1.11`); strict enforcer (`requirePluginVersions`/`reactorModuleConvergence`) + npm UI build in lifecycle + Cassandra acceptance ITs — too heavy |
+| nebula-contrib/ngbatis | — | 8→21 | **0 runnable unit tests** (tests need a live Nebula Graph DB) — nothing to conserve |
+| ravindraAmbati/pet-clinic | [#96](https://github.com/ravindraAmbati/pet-clinic/issues/96) | 8→11 | `wro4j-maven-plugin` has a disjoint `org.webjars.npm:minimatch` version-range conflict (`[3.0.2,3.1)` vs `[3.1.1,4)`) — fragile web-resource build, not worth forcing for ★1 |
 
 ## Tally
 
