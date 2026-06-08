@@ -41,6 +41,9 @@ Kept in sync as PRs are opened / merged / bailed.
 | nebula-contrib/ngbatis | — | 8→21 | **0 runnable unit tests** (tests need a live Nebula Graph DB) — nothing to conserve |
 | ravindraAmbati/pet-clinic | [#96](https://github.com/ravindraAmbati/pet-clinic/issues/96) | 8→11 | `wro4j-maven-plugin` has a disjoint `org.webjars.npm:minimatch` version-range conflict (`[3.0.2,3.1)` vs `[3.1.1,4)`) — fragile web-resource build, not worth forcing for ★1 |
 
+| scc-digitalhub/AAC | [#534](https://github.com/scc-digitalhub/AAC/issues/534) | 17→21 | baseline **not green in a generic env** — 62/189 tests fail on JDK 17 (OAuth/SAML/auth-code return 302≠200; needs AAC's CI test/security setup). Frontend-skip worked, SB 2.7.18 supports 21 via Spring 5.3.31 — but no conservable baseline |
+| capital-com-sv/api-java-samples | [#1](https://github.com/capital-com-sv/api-java-samples/issues/1) | 17→21 | **0 tests** — nothing to conserve (samples repo, like s4u/api-java-samples) |
+
 ## Tally
 
 - **20 PRs opened** across 19 repos (incl. **datawave ★699 — a full multi-framework JDK-17 migration: 1108 test groups conserved, RC=0**, the deepest bump yet), one hand-written tested HttpClient/AWS-v2 refactor and **three P14 multi-step** PRs: conciliator 11→21 w/ Spring Boot 2→3/jakarta, cassandra-reaper ★516 11→21 w/ GitHub-Packages dep + full-`mvn install` UI validation, and jexunit-core 8→21 pure 3-hop ladder), all 4 LTS hops covered, every bump verified green under the repo's own CI command.
