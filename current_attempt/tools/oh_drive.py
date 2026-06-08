@@ -100,6 +100,10 @@ def main():
         (e.g. LLMSummarizingCondenser) can still stream and survive the slow endpoint."""
         def completion(self, messages, **kw):
             kw.setdefault("on_token", lambda _c: None)
+            # Disable Qwen "thinking" for condensation: we must store the conclusion,
+            # not the chain-of-thought (which bloats memory ~20x and, if it exhausts
+            # max_output_tokens before </think>, leaves NO summary at all).
+            kw.setdefault("extra_body", {"chat_template_kwargs": {"enable_thinking": False}})
             return super().completion(messages, **kw)
     from openhands.sdk.event import MessageEvent
     from pydantic import SecretStr
