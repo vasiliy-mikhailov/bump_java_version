@@ -1,9 +1,9 @@
 ---
 name: bump-java-version
-description: Migrate a Maven or Gradle project from one Java LTS to the next (8->11, 11->17, 17->21, 21->25) so it still compiles under the new JDK and previously-passing tests still pass — by hand, using only standard tools (JDKs, Maven or Gradle, and OpenRewrite recipes from Maven Central; no project-specific scripts). Use when upgrading or bumping the Java version of a Maven or Gradle project, modernizing to a newer JDK or LTS, or performing the Spring Boot 1->2 / 2->3 and javax->jakarta migration that a Java upgrade requires.
+description: Migrate a Maven or Gradle project from one Java LTS to the next (8->11, 11->17, 17->21, 21->25) so it still compiles under the new JDK and previously-passing tests still pass — via OpenRewrite recipes, using only standard tools (JDKs, Maven or Gradle, and OpenRewrite recipes from Maven Central; no project-specific scripts). Use when upgrading or bumping the Java version of a Maven or Gradle project, modernizing to a newer JDK or LTS, or performing the Spring Boot 1->2 / 2->3 and javax->jakarta migration that a Java upgrade requires.
 ---
 
-# Bumping a Maven or Gradle project one Java LTS step — by hand
+# Bumping a Maven or Gradle project one Java LTS step — via OpenRewrite recipes
 
 Migrate a project **one** Java LTS step (8→11, 11→17, 17→21, or 21→25) so it **compiles** under the new
 JDK and every test that **passed before still passes**. Uses only standard tools — **JDKs, the project's
@@ -16,6 +16,11 @@ scripts.
 
 Always use the project's wrapper when present (`./mvnw`, and for Gradle **always** the repo's `./gradlew`,
 never a system `gradle`). Do **one** step at a time (8→17 = do 8→11 fully green, then 11→17).
+
+**Discipline — recipes only, never by hand (this governs every step below):**
+- **Apply every change with an OpenRewrite recipe.** Prefer the *unparametrized* meta-recipes (`UpgradeBuildToJava<N>`, `UpgradeSpringBoot_<X>`, §3) that bundle the dep/plugin/flag fixes; a recipe you must parametrize is a weaker, less-portable form.
+- **Never hand-edit a `pom.xml`/`build.gradle` or improvise source.** The §4/§7 entries below name *what* a wall needs (recognition) — apply each via its recipe; if a needed change has **no** recipe, that is a recipe gap → **bail `I_MADE_MANUAL_EDIT`**, do not hand-apply it. An agent that, cut off from its recipes, fabricates a migration from its own head is producing unauditable fantasy, not a bump.
+- **Verify the recipe path first.** Before migrating, confirm the recipe artifacts resolve (Maven Central / the proxy is reachable); if they don't, **bail `RECIPE_PATH_UNREACHABLE`** up front — never fall back to manual edits.
 
 **How to read this:** §0–§5 are the procedure — follow them in order. When a step fails, find your error
 in **§7** (grouped by kind) and apply the fix, then re-run the failed step. **§6** (Spring Boot) and **§8**
@@ -130,10 +135,9 @@ Review the diff (`git diff`) before continuing; commit it.
 
 ---
 
-## 4. Apply the deterministic JDK-removal fixes
+## 4. JDK-removal fixes — what the §3 recipes apply (recognition, not hand-edits)
 
-The version bump doesn't cover everything the JDK removed. Apply these **proactively** for the relevant
-hop (symptoms/extra cases in §7).
+The `UpgradeBuildToJava<N>` recipes (§3) apply these. **Do NOT hand-apply them.** The list is recognition — *what* the JDK removed and what a correct migration restores. If a symptom below persists **after** the recipe ran, it is a recipe gap → **bail `I_MADE_MANUAL_EDIT`**, never hand-edit (cases in §7).
 
 **For 8→11 (and 11→17 if still javax-era)** — re-add the Java-EE modules removed in JDK 11.
 - **Maven** — into a real top-level `<dependencies>`:
@@ -227,6 +231,8 @@ Full upgrades — do them only if §7 sends you here, then re-run §3–§5.
 
 ## 7. Troubleshooting (match the first real error)
 
+> **Governed by the Discipline (top):** each row names *what* the wall needs — apply it via an OpenRewrite recipe (the §3 meta-recipes cover most); where no recipe provides it, **bail `I_MADE_MANUAL_EDIT`**, never hand-edit.
+
 Fixes apply to **both** build tools; where the location differs, Maven uses `<dependencyManagement>`/`<argLine>`,
 Gradle uses `dependencies {}`/`tasks.test {}`. Find your error in the group below.
 
@@ -295,6 +301,8 @@ Gradle uses `dependencies {}`/`tasks.test {}`. Find your error in the group belo
 
 After the migration + every matching fix, if it still won't compile or tests still regress, stop and
 report the failed step + the unresolved error. Known genuine bails:
+- **`RECIPE_PATH_UNREACHABLE`** — the OpenRewrite recipe artifacts don't resolve (no Central/proxy reachability); bail **before** touching the project, never hand-migrate.
+- **`I_MADE_MANUAL_EDIT`** — a wall needs a change no recipe provides; bail rather than hand-edit a build file or improvise. The unmet wall is a recipe gap to fill, not a thing to fake.
 - **Spring Boot 1.x app whose custom code calls SB-2-removed APIs** (`EmbeddedServletContainerFactory`,
   `actuate.endpoint.mvc`, `thymeleaf.resourceresolver`) — needs a hand-written migration.
 - **JHipster-8 app whose OpenRewrite step fails with a cascade** (JAXB → `javax.annotation.Generated`
