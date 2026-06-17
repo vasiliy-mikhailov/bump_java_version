@@ -12,9 +12,9 @@ try:
     from pydantic import SecretStr
     base, model, key = os.environ["OC_BASE"], "openai/" + os.environ["OC_MODEL"], SecretStr(os.environ["OC_KEY"])
     llm = LLM(model=model, base_url=base, api_key=key, usage_id="ohrun",
-              max_output_tokens=4096, temperature=0.0, native_tool_calling=True)
+              max_output_tokens=32768, temperature=0.0, native_tool_calling=True)
     cond = LLM(model=model, base_url=base, api_key=key, usage_id="ohcond",
-               max_output_tokens=4096, temperature=0.0, native_tool_calling=False)
+               max_output_tokens=32768, temperature=0.0, native_tool_calling=False)
     agent = Agent(llm=llm, tools=get_default_tools(enable_browser=False),
                   condenser=LLMSummarizingCondenser(llm=cond, max_size=40, keep_first=2))
     conv = Conversation(agent=agent, workspace=LocalWorkspace(working_dir=workdir), max_iteration_per_run=80)
