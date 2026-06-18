@@ -45,10 +45,12 @@ NXEOF
 
 emit() { python3 - "$@" <<'PY'
 import sys, json
-out, slug, repo, hop, verdict, pre, post, lost, prerc, postrc, comprc = sys.argv[1:12]
+args = sys.argv[1:]
+out, slug, repo, hop, verdict, pre, post, lost, prerc, postrc, comprc = args[:11]
+eff = int(args[11]) if len(args) > 11 else -1
 json.dump({"slug": slug, "repo": repo, "hop": hop, "verdict": verdict, "pre_pass": int(pre),
            "post_pass": int(post), "lost": int(lost), "prerc": int(prerc), "postrc": int(postrc),
-           "compile_rc": int(comprc)}, open(out + "/result.json", "w"), indent=1)
+           "compile_rc": int(comprc), "effective_target": eff}, open(out + "/result.json", "w"), indent=1)
 print("VERDICT", verdict, "pre", pre, "post", post, "lost", lost)
 PY
 }
@@ -64,6 +66,32 @@ for x in glob.glob(root + "/**/target/surefire-reports/TEST-*.xml", recursive=Tr
             s.add(tc.get("classname", "") + "#" + tc.get("name", ""))
 open(dst, "w").write("\n".join(sorted(s)))
 print(len(s))
+PY
+}
+
+efftarget() { python3 - "$1" <<'PY'
+import sys, os, struct
+root = sys.argv[1]
+MAIN=("/target/classes/","/build/classes/java/main/","/build/classes/kotlin/main/","/build/classes/groovy/main/","/build/classes/scala/main/","/out/production/")
+TEST=("/target/test-classes/","/build/classes/java/test/","/build/classes/kotlin/test/","/build/classes/groovy/test/","/out/test/")
+def major(p):
+    try:
+        with open(p,"rb") as f: h=f.read(8)
+        if len(h)<8 or h[:4]!=b"\xca\xfe\xba\xbe": return None
+        return struct.unpack(">H",h[6:8])[0]
+    except Exception: return None
+mains=[]; tests=[]
+for dp,_,fn in os.walk(root):
+    pp=dp.replace("\\","/")+"/"
+    if "/META-INF/versions/" in pp: continue
+    for f in fn:
+        if not f.endswith(".class") or f=="module-info.class": continue
+        fp=os.path.join(dp,f)
+        if any(h in pp for h in MAIN): mains.append(fp)
+        elif any(h in pp for h in TEST): tests.append(fp)
+pool = mains or tests
+majs=[m for m in (major(x) for x in pool) if m]
+print(min(majs)-44 if majs else -1)
 PY
 }
 
@@ -118,6 +146,7 @@ esac
 docompile "$TO" > "$OUT/compile.log" 2>&1; COMPRC=$?
 runtest "$TO" > "$OUT/post.log" 2>&1; POSTRC=$?
 POST=$(passet "$(pwd)" "$OUT/post_set.txt")
+ETGT=$(efftarget "$(pwd)")
 LOST=$(python3 - "$OUT/pre_set.txt" "$OUT/post_set.txt" <<'PY'
 import sys
 from collections import Counter
@@ -164,5 +193,6 @@ if [ "$PRE" -eq 0 ]; then
   else V=NO_BASELINE_NOTESTS; fi
 elif [ "$COMPRC" -ne 0 ]; then V=FAIL_build_post
 elif [ "$LOST" -ne 0 ]; then V=FAIL_test_conservation
+elif [ "$ETGT" -ge 0 ] && [ "$ETGT" -lt "$TO" ]; then V=FAIL_target_not_bumped
 else V=PASS; fi
-emit "$OUT" "$SLUG" "$REPO" "$FROM->$TO" "$V" "$PRE" "$POST" "$LOST" "$PRECOMPRC" "$POSTRC" "$COMPRC"
+emit "$OUT" "$SLUG" "$REPO" "$FROM->$TO" "$V" "$PRE" "$POST" "$LOST" "$PRECOMPRC" "$POSTRC" "$COMPRC" "$ETGT"
