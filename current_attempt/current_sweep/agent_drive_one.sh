@@ -83,7 +83,7 @@ def major(p):
 mains=[]; tests=[]
 for dp,_,fn in os.walk(root):
     pp=dp.replace("\\","/")+"/"
-    if "/META-INF/versions/" in pp: continue
+    if "/META-INF/versions/" in pp or "/buildSrc/" in pp or "/build-logic/" in pp: continue
     for f in fn:
         if not f.endswith(".class") or f=="module-info.class": continue
         fp=os.path.join(dp,f)
