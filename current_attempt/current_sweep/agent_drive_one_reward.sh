@@ -68,7 +68,12 @@ PY
 }
 
 # reproducible deps: reuse the dig's read-only dep cache + shared gradle distributions when mounted
-[ -d /ro ] && export GRADLE_RO_DEP_CACHE=/ro
+[ -d /ro/caches/modules-2 ] && export GRADLE_RO_DEP_CACHE=/ro/caches
+# Gradle toolchains ignore JAVA_HOME -> point detection at the installed JDKs (else 'No matching toolchains')
+cat > "$HOME/.gradle/gradle.properties" <<'GP'
+org.gradle.java.installations.paths=/opt/jdk/8,/opt/jdk/11,/opt/jdk/17,/opt/jdk/21,/opt/jdk/25
+org.gradle.java.installations.auto-download=false
+GP
 [ -d /dists ] && { mkdir -p "$HOME/.gradle/wrapper"; ln -sfn /dists "$HOME/.gradle/wrapper/dists"; }
 cd /root; rm -rf work; mkdir work; cd work
 git init -q; git config --global advice.detachedHead false
