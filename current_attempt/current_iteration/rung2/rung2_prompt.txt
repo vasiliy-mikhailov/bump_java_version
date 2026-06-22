@@ -1,0 +1,52 @@
+You are migrating this Java project from Java __FROM__ to Java __TO__. Your working directory /work contains the project. Work autonomously until done.
+
+GOAL: make the project COMPILE and pass its TESTS under JDK __TO__, conserving every test that passed under JDK __FROM__. The build tools are preinstalled; JDKs live at /opt/jdk/8 and /opt/jdk/11.
+
+You have these shell commands on PATH (use them; they pick Maven or Gradle automatically):
+- `bbuild 8` / `bbuild 11`  — compile (no tests) under that JDK
+- `btest 8`  / `btest 11`   — run tests under that JDK
+- `bapply`                  — apply the OpenRewrite recipe file `rewrite.yml` you write in /work (runs it under JDK 8)
+
+CRITICAL — NEVER time-box these builds. Cold Gradle/Maven runs download distributions + the OpenRewrite jars and can take several MINUTES. ALWAYS pass a long timeout (set the command's timeout to 2000 seconds) when you run `bapply`, `bbuild`, or `btest`. If a build is still running or reports a timeout, CONTINUE it or re-run it — NEVER abandon it and move on. A `bapply` that was cut off means the recipe was NOT applied: your tests may still pass at the old Java level, but the bytecode-target check will FAIL. After `bapply`, always confirm it reported BUILD SUCCESSFUL and actually changed the build files before trusting it.
+
+REWARD (this is how your work is scored — optimize for it):
+- A migration that PASSES the JDK __TO__ gate scores 1.0, then is multiplied by 0.9 for each "injected change".
+- FREE (no penalty): the unparametrized OpenRewrite meta-recipe `org.openrewrite.java.migrate.Java8toJava11`, and the two hop-FIXED intents `org.openrewrite.java.migrate.UpgradeJavaVersion` with `version: __TO__` and `org.openrewrite.gradle.UpdateGradleWrapper` with the pinned version. These cost nothing — prefer them.
+- COSTS 0.9 each: any OTHER parametric OpenRewrite recipe you add (one where YOU choose the args, e.g. RemovePlugin, UpgradeDependencyVersion, ChangePluginConfiguration), AND any manual edit you make to a source/build file.
+- So: do as much as possible with the FREE recipes; only reach for a parametric recipe or a hand edit when a real build wall needs it. Fewer injected changes = higher score.
+
+START HERE — write /work/rewrite.yml with exactly this, then run `bapply`:
+```
+type: specs.openrewrite.org/v1beta/recipe
+name: com.bjv.Bump
+recipeList:
+  - org.openrewrite.java.migrate.Java8toJava11
+  - org.openrewrite.java.migrate.UpgradeJavaVersion:
+      version: __TO__
+```
+Then run `bbuild 11`. If it compiles, run `btest 11`. If tests pass and none are lost, you are done.
+
+REFLECT LOOP — if `bbuild 11` or `btest 11` fails, read the error and fix the FIRST wall, then re-run. No step/iteration limit — keep going until it passes or you have exhausted real options.
+Wall → fix:
+- Obsolete/incompatible build plugin (e.g. animal-sniffer "requires ASM7", or a plugin enforcing a Java-8 floor): add a parametric recipe to rewrite.yml and `bapply` again:
+    - org.openrewrite.maven.RemovePlugin:
+        groupId: <g>
+        artifactId: <a>
+- A dependency too old for JDK 11 (lombok < 1.18.20, byte-buddy < 1.10, mockito < 3, etc.): add
+    - org.openrewrite.java.dependencies.UpgradeDependencyVersion:
+        groupId: <g>
+        artifactId: <a>
+        newVersion: <floor>
+- Gradle wrapper: Gradle 5.0+ ALREADY runs on JDK 11 — do NOT bump the wrapper just for the Java version. Only bump it if `bapply` (OpenRewrite) fails to LOAD on the current wrapper (needs roughly Gradle 6.0+). When you must bump, use the FREE intent targeting **6.9** (NOT 7.x):
+    - org.openrewrite.gradle.UpdateGradleWrapper:
+        version: "6.9"
+  Or, if `bapply` errors before it can run, manually set `gradle/wrapper/gradle-wrapper.properties` to gradle-6.9 (1 edit), then `bapply`. CRITICAL: do NOT jump to Gradle 7.x — Gradle 7 REMOVED the `compile`/`testCompile`/`runtime` dependency configurations, which silently breaks any build.gradle still using them (`Could not find method compile()`). 6.9 keeps them (deprecated but working). If a build genuinely requires Gradle 7+, you must also rewrite `compile`→`implementation` and `testCompile`→`testImplementation` in the build files (each such edit counts 0.9).
+- Spring Boot 1.x that can't run on 11: add `org.openrewrite.java.spring.boot2.UpgradeSpringBoot_2_7`.
+- A RUNTIME test failure `ArrayIndexOutOfBoundsException: Index 1 out of bounds for length 1` thrown from a library's static initializer (`<clinit>`) — classic with Jadira and other libs that parse `java.version` the old `1.x` way (JDK 9+ reports a bare `11`, so their split throws). Fix: bump the offending lib via UpgradeDependencyVersion (Jadira → `7.0.0.CR1`); if it has no JDK-11-compatible release, it's a bail.
+- `package javax.xml.bind`/`javax.annotation.Generated`/`JAXBException` etc. (EE modules removed in JDK 11): the `Java8toJava11` recipe already re-adds these (jaxb-api/jaxb-runtime/javax.activation/javax.annotation-api 2.3.1) and floors surefire to 2.22.2 — trust it. ONLY if the error persists during ANNOTATION PROCESSING (project has `<annotationProcessorPaths>`): also add jaxb-api + javax.annotation-api as `<path>` entries inside annotationProcessorPaths (regular deps aren't on the processor path). And remove any leftover `--add-modules java.xml.bind`/`java.se.ee` flag.
+- `package <internal> is not visible` (project uses a JDK-internal package like java.awt.peer / sun.security.*): there is no clean recipe — hand-edit the build file to add `--add-exports=<module>/<package>=ALL-UNNAMED` to the compiler args (map: java.awt.peer→java.desktop, sun.security.*/sun.misc.*→java.base). Counts as 1 edit.
+- A removed/changed JDK API in the project's own source: hand-edit the source. Each edit counts 0.9.
+
+ABSOLUTELY FORBIDDEN (these score 0 — it is cheating): do NOT delete, skip, disable, or weaken any test or assertion; do NOT add -DskipTests or <skip>true to a test plugin; do NOT delete test files; do NOT touch test code to make it pass. Conservation of the original passing tests is checked independently.
+
+When the project passes `btest 11` with no tests lost, state that you are done and summarize what you changed.

@@ -1,0 +1,56 @@
+You are migrating this Java project from Java __FROM__ to Java __TO__. Your working directory /work contains the project. Work autonomously until done.
+
+GOAL: make the project COMPILE and pass its TESTS under JDK __TO__, conserving every test that passed under JDK __FROM__. JDKs live at /opt/jdk/__FROM__ and /opt/jdk/__TO__.
+
+You have these shell commands on PATH (they pick Maven or Gradle automatically):
+- `bbuild __FROM__` / `bbuild __TO__`  — compile (no tests) under that JDK
+- `btest __FROM__`  / `btest __TO__`   — run tests under that JDK
+- `bapply`                              — apply the OpenRewrite recipe file `rewrite.yml` you write in /work (runs it under JDK __FROM__)
+
+CRITICAL — NEVER time-box these builds. Cold Gradle/Maven runs download distributions + the OpenRewrite jars and can take several MINUTES. The harness already removes the command cutoff, so do NOT set any timeout on `bapply`/`bbuild`/`btest` — run them and let them finish. If a build is still running or pauses, CONTINUE it (empty command to keep waiting) — NEVER abandon it. A `bapply` that was cut off means the recipe was NOT applied. After `bapply`, confirm it reported BUILD SUCCESSFUL and actually changed the build files.
+
+HOW TO WORK (graded on a CORRECT migration that conserves tests — nothing else counts if a test is lost or the bytecode isn't really at __TO__):
+- Prefer the off-the-shelf transforms. The unparametrized meta-recipes + setting the Java version to __TO__ + (only if needed) the pinned Gradle wrapper are the clean path — use them first.
+- Treat every manual edit and every project-specific dependency/plugin change as a LIABILITY. Make the FEWEST changes that genuinely work.
+- Never touch or weaken test code (see FORBIDDEN).
+
+START HERE — write /work/rewrite.yml with exactly this, then run `bapply`:
+```
+type: specs.openrewrite.org/v1beta/recipe
+name: com.bjv.Bump
+recipeList:
+  - org.openrewrite.java.migrate.UpgradePluginsForJava21
+  - org.openrewrite.java.migrate.UpgradeBuildToJava21
+  - org.openrewrite.java.migrate.UpgradeJavaVersion:
+      version: __TO__
+```
+Then run `bbuild __TO__`. If it compiles, run `btest __TO__`. If tests pass and none are lost, you are done.
+
+REFLECT LOOP — if `bbuild __TO__` or `btest __TO__` fails, read the error, fix the FIRST wall, re-run. No iteration limit.
+Wall → fix (JDK-21 class file version is **65**):
+- Test fork strong-encapsulation (`InaccessibleObjectException` / `module {A} does not "opens {pkg}"`): hand-edit the test fork args (Maven surefire `<argLine>`, Gradle `tasks.test { jvmArgs(...) }`) adding `--add-opens=<module>/<pkg>=ALL-UNNAMED` per package the error names (one token each, joined with `=`; preserve existing argLine like JaCoCo's `@{argLine}`). Whole block = ONE edit.
+- ByteBuddy/Mockito on v65: `Cannot define class using reflection` / `Mockito cannot mock this class` / `Unsupported class file major version 65`. Mockito needs **≥ 5.18** for JDK 21; and force `net.bytebuddy:byte-buddy(:agent)` ≥ **1.14.12** (a plain bump is overridden by the Spring BOM ~1.14 — force it: Maven `<byte-buddy.version>` property, Gradle `configurations.all { resolutionStrategy.eachDependency { if (requested.group=="net.bytebuddy") useVersion("1.14.12") } }`). UpgradeDependencyVersion.
+- JaCoCo `Unsupported class file major version 65`: floor jacoco to **0.8.12**.
+- Spring **component-scan** `Unsupported class file major version 65` / `SimpleMetadataReader` `BeanDefinitionStoreException`: the SB2 BOM is too old for v65. Prefer `org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_3` (also does javax→jakarta + Spring Security 6). If you must stay on the 2.7 line, the floor is **SB 2.7.17+** (earlier 2.7.x ships an ASM that can't read v65) — but 2.7 is EOL, prefer 3.x. For Gradle, even a patch bump can fix it (SB 3.0.0's ASM 9.4 can't parse v65; **3.0.7+** ships ASM 9.5; 3.2.x fully supports 21). If already on SB ≥ 3.2 and STILL hitting v65 ASM, it's a *transitive* old shaded ASM — find and force that dep, don't keep bumping Spring Boot.
+- `cannot find symbol: WebSecurityConfigurerAdapter` (removed in Spring Security 6): do the SB 2→3 upgrade (`UpgradeSpringBoot_3_3`), which migrates it.
+- Gradle wrapper below the JDK-21 floor (**8.5**): bump via `org.openrewrite.gradle.UpdateGradleWrapper` {version: "8.10.2"} (the pinned value), or by hand. Signatures: `Unsupported class file major version N` while Gradle CONFIGURES, or `Could not determine java version from '21.0.x'`. NEVER point distributionUrl at a `file://` path.
+- After a wrapper bump to 9.x: `Failed to apply plugin` naming a Gradle-internal type (`PatternSets$PatternSetFactory`, `No such property: internal for BuildParams`) → bump the failing *plugin* to its Gradle-9 line, not Gradle.
+- Gradle + Kotlin: `Inconsistent JVM-target compatibility` → `kotlin { jvmToolchain(__TO__) }`.
+- `sun.misc.Unsafe … terminally deprecated` WARNING from a dep (jctools/Netty): while only a warning and tests pass, it's cosmetic — conserve.
+- Multi-module: a JDK bump is per-BUILD, not per-module. `Dependency resolution is looking for a library compatible with JVM runtime version N, but 'project :X' is only compatible with M` = some modules' target wasn't set — set the SAME target in every module (root `allprojects`/`subprojects`).
+- `Cannot find a Java installation … matching {languageVersion=N}` (foojay resolver timeout, no network): point Gradle at the installed JDKs `-Porg.gradle.java.installations.paths=/opt/jdk/__FROM__,/opt/jdk/__TO__` and DROP `vendor`/`implementation` pins from `toolchain{}` — `languageVersion` alone is enough.
+- `Entry <path> is a duplicate but no duplicate handling strategy has been set` (Gradle 7+ hard error): `tasks.withType(Copy).configureEach { duplicatesStrategy = DuplicatesStrategy.EXCLUDE }`.
+- A removed/changed JDK API in the project's OWN source: hand-edit minimally.
+
+ALSO — general discipline (these stop you chasing non-problems):
+- EDIT HYGIENE: after EVERY build-file edit, BEFORE rebuilding, validate it — `./gradlew help -q` (Maven `mvn -q validate`). If that fails naming the file you just edited, YOUR edit broke the script: fix/revert it, do not chase it as a migration error. Make minimal, validated edits.
+- NOT YOUR TESTS: tests needing Docker/Testcontainers/a database/Selenium/the network were already failing in the baseline — NOT in your conserve-set. Only tests that PASSED under __FROM__ must still pass.
+- OOM during tests is usually DOWNSTREAM of an earlier real error — fix the FIRST error; only raise `-Xmx` if it's genuinely heap.
+- Stale generated classes (`ClassAlreadyExistsException`): `./gradlew clean` / `rm -rf target`, re-run.
+- `--add-opens` for deep reflection, `--add-exports` only for compile/link to a non-exported API; do NOT use `--illegal-access=permit` (removed in JDK 17). Canonical opens set: `--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.text=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.desktop/java.awt.font=ALL-UNNAMED --add-opens=java.management/java.lang.management=ALL-UNNAMED`.
+
+BAILS (report honestly): **EasyMock** has no clean JDK-21+ mocking path (`ClassProxyFactory` define fails) — bail; a **semantic JDK change** in the project's own code (confirm with a pristine-checkout probe); an abandoned dependency with no JDK-21 release; native (CMake/JNI) modules.
+
+ABSOLUTELY FORBIDDEN (cheating, fails the run): do NOT delete/skip/disable/weaken any test or assertion; no -DskipTests/`<skip>true`; do NOT delete test files; do NOT touch test code to make it pass. Conservation is checked independently.
+
+When the project passes `btest __TO__` with no tests lost, say you are done and summarize what you changed.

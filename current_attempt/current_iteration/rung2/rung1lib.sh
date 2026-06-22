@@ -1,0 +1,49 @@
+# Rung-1 shared harness. Source with:  SLUG=<slug> FROM=8 TO=11 . rung1lib.sh
+# Provides: r1_clone <repo> <sha> ; r1_baseline (echoes pre-count or NOCOMPILE) ;
+#           r1_apply (runs $BJV_WS/rewrite.yml under jv_from) ; r1_gate <edits> (writes verdict + score)
+I=/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration
+export PATH="$I/hoptools:$PATH"
+export BJV_WS=/tmp/bjv_ws/$SLUG BJV_FROM=$FROM BJV_TO=$TO BJV_NET=mvn-cache \
+  BJV_M2=/home/vmihaylov/.m2-fitness BJV_SETTINGS=/home/vmihaylov/maven-config/settings.xml \
+  BJV_GRADLE_RO=/home/vmihaylov/.gradle-fitness BJV_GRADLE_DISTS=/home/vmihaylov/.gradle-dists
+export O=/tmp/hoptest/$SLUG; mkdir -p "$O"
+PY(){ docker run --rm -v "$BJV_WS:$BJV_WS" -v "$I/tools:/t:ro" -v "$O:$O" python:3-slim python3 /t/score.py "$@"; }
+EDIT_ADDEXPORTS(){ docker run --rm -v "$BJV_WS:$BJV_WS" -v "$I/tools:/t:ro" python:3-slim python3 /t/edit_pom_addexports.py "$@"; }
+ALPINE(){ docker run --rm -v "$BJV_WS:$BJV_WS" alpine "$@"; }   # for sed/grep edits on the workspace
+
+r1_clone(){ # repo sha
+  docker run --rm -v /tmp/bjv_ws:/w alpine rm -rf "/w/$SLUG" 2>/dev/null
+  mkdir -p "$BJV_WS"
+  git clone -q "https://github.com/$1.git" "$BJV_WS" 2>"$O/clone.log" || { echo FETCH_FAIL; return 1; }
+  git -C "$BJV_WS" checkout -q "$2" 2>>"$O/clone.log" || { echo FETCH_FAIL; return 1; }
+  [ -f "$BJV_WS/pom.xml" ] && echo "BUILDTOOL=maven" || echo "BUILDTOOL=gradle"
+}
+r1_baseline(){ # echoes integer pre-pass count, or NOCOMPILE
+  bjv from build >"$O/pre_build.log" 2>&1 || { echo NOCOMPILE; return 1; }
+  bjv from test  >"$O/pre_test.log"  2>&1 || true
+  PY passet "$BJV_WS" "$O/pre_set.txt" >/dev/null 2>&1
+  local n; n=$(grep -c . "$O/pre_set.txt" 2>/dev/null || echo 0)
+  find "$BJV_WS" \( -path '*/target/surefire-reports' -o -path '*/build/test-results/test' \) -type d -exec rm -rf {} + 2>/dev/null
+  echo "${n:-0}"
+}
+r1_apply(){ # applies $BJV_WS/rewrite.yml under jv_from; log -> $O/apply.log
+  local RNAME; RNAME=$(grep -m1 '^name:' "$BJV_WS/rewrite.yml"|awk '{print $2}'); RNAME=${RNAME:-com.bjv.Bump}
+  if [ -f "$BJV_WS/pom.xml" ]; then
+    bjv from run "mvn -B -ntp -U -Denforcer.skip=true org.openrewrite.maven:rewrite-maven-plugin:6.40.0:run -Drewrite.configLocation=rewrite.yml -Drewrite.activeRecipes=$RNAME -Drewrite.recipeArtifactCoordinates=org.openrewrite.recipe:rewrite-migrate-java:3.35.0,org.openrewrite.recipe:rewrite-spring:6.31.0" >"$O/apply.log" 2>&1
+  else
+    bjv from run "printf '%s' 'initscript{repositories{gradlePluginPortal();mavenCentral()};dependencies{classpath(\"org.openrewrite:plugin:latest.release\")}};rootProject{apply plugin: org.openrewrite.gradle.RewritePlugin;dependencies{rewrite(\"org.openrewrite.recipe:rewrite-migrate-java:latest.release\");rewrite(\"org.openrewrite.recipe:rewrite-spring:latest.release\")};rewrite{activeRecipe(\"'$RNAME'\")}}' > /tmp/rw.init.gradle && GRADLE_OPTS='-Xmx6g -XX:MaxMetaspaceSize=1g' ./gradlew --no-daemon --init-script /tmp/rw.init.gradle rewriteRun" >"$O/apply.log" 2>&1
+  fi
+  echo "apply rc=$? (see $O/apply.log)"
+}
+r1_gate(){ # arg1 = number of manual edits made
+  local EDITS=${1:-0}
+  # force a genuine JDK_to recompile: drop stale class outputs (else incremental skip => gate reads jv_from bytecode)
+  ALPINE sh -c "cd $BJV_WS && find . -type d \( -path '*/target/classes' -o -path '*/target/test-classes' -o -path '*/build/classes' \) -exec rm -rf {} + 2>/dev/null; true"
+  bjv to build >"$O/compile.log" 2>&1; local BRC=$?
+  bjv to test  >"$O/post.log"    2>&1; local TRC=$?
+  jvm-run "$BJV_TO" jvmjob run "cd /work && osv-scanner scan source --offline-vulnerabilities --format json -r ." >"$O/cwe.json" 2>"$O/scan.err" || true
+  PY final "$BJV_WS" "$O/pre_set.txt" "$BJV_FROM" "$BJV_TO" "$BRC" "$TRC" "$O/cwe.json" "$O" | tee "$O/verdict.txt"
+  if grep -aq "VERDICT PASS" "$O/verdict.txt"; then
+    docker run --rm python:3-slim python3 -c "print(f'SCORE edits=$EDITS  score={0.9**$EDITS:.3f}')" | tee "$O/score.txt"
+  else echo "SCORE gate_fail score=0 (edits=$EDITS)" | tee "$O/score.txt"; fi
+}

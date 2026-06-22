@@ -1,45 +1,44 @@
 ---
 name: bump-java-11-to-17
-description: Emit the conversion program to migrate a Maven or Gradle project from Java 11 to Java 17 — an ordered list of unparametrized OpenRewrite recipes + predefined intents that the harness applies and scores. Use for an 11→17 Java LTS bump.
+description: Emit the rewrite.yml that migrates a Maven or Gradle project from Java 11 to Java 17 — an OpenRewrite declarative composite recipe whose recipeList the harness runs, then scores. Use for an 11→17 Java LTS bump.
 ---
 
-# Java 11 → 17 — emit a recipe+intent program
+# Java 11 → 17 — emit a `rewrite.yml`
 
-You output an **ordered conversion program** (a list of ops); the harness applies and scores it. You run nothing,
-edit nothing. Two op types only:
-- **`recipe`** — `{env: from|to, fqn}`, one *unparametrized* OpenRewrite recipe FQN from the catalog below.
-- **`intent`** — `set_target` (set source/`release`/toolchain → **17**) | `bump_wrapper` (Gradle wrapper → **7.6**).
+You output **one executable `rewrite.yml`** — an OpenRewrite declarative composite recipe (`name: com.bjv.Bump`)
+whose **`recipeList`** is the ordered recipe sequence the harness runs (one `mvn rewrite:run` / `gradle rewriteRun`),
+then scores. You run nothing, edit nothing — and a `rewrite.yml` can only list recipes, so a hand-edit is impossible.
 
-Nothing else is expressible — no hand-edit, no `skipTests`, no test deletion. A wall no recipe/intent covers →
-emit a **bail** (bottom). Offline Maven mirror + frozen CWE snapshot; every FQN/version you name must exist in it.
-**Done** = previously-passing tests still pass under 17, effective compiler target == 17, no known CWEs.
+The "intents" are recipes too:
+- **set target → 17** → `org.openrewrite.java.migrate.UpgradeJavaVersion` with `version: 17`.
+- **bump Gradle wrapper** (only if below the JDK-17 floor 7.3) → `org.openrewrite.gradle.UpdateGradleWrapper` with `version: "7.6"`.
 
-## Default program
-- **Maven:** `recipe to org.openrewrite.java.migrate.UpgradePluginsForJava17`, then
-  `recipe to org.openrewrite.java.migrate.UpgradeBuildToJava17` (this sets `maven.compiler.release=17` + the §-below fixes).
-- **Gradle:** `intent set_target` (→17, incl. Kotlin `jvmToolchain(17)`); add `intent bump_wrapper` only if the
-  wrapper predates **7.3** (JDK-17 floor). Then the recipes above via the rewrite-gradle init-script if it still won't build.
+Every recipe FQN you use must be in the catalog and resolvable in the **offline** mirror. **Done** = tests still
+pass under 17, effective compiler target == 17, no known CWEs. A wall no recipe covers → emit a **bail** (bottom).
 
-## What `UpgradeBuildToJava17` restores (recognition — the recipe applies it; don't add separate ops)
-- **Test-fork strong-encapsulation**: `--add-opens java.base/java.lang|java.util|java.lang.reflect|…=ALL-UNNAMED`
-  (and `--add-exports` only for compile-time access to a non-exported API). The exception names the exact module/package.
-- EE modules removed earlier (only if the project is still javax-era): jaxb-api/runtime, activation, annotation-api.
-- **JaCoCo** floored to **0.8.12**; surefire ≥ **2.22.2**.
+## Default `rewrite.yml`
+```yaml
+type: specs.openrewrite.org/v1beta/recipe
+name: com.bjv.Bump
+recipeList:
+  - org.openrewrite.gradle.UpdateGradleWrapper:      # ONLY if wrapper < 7.3 (Gradle projects)
+      version: "7.6"
+  - org.openrewrite.java.migrate.UpgradePluginsForJava17
+  - org.openrewrite.java.migrate.UpgradeBuildToJava17
+  - org.openrewrite.java.migrate.UpgradeJavaVersion:  # sets source/release/toolchain (+ Kotlin jvmToolchain) to 17
+      version: 17
+```
+Drop `UpdateGradleWrapper` if the wrapper already ≥ 7.3, or for Maven. `UpgradeBuildToJava17` already adds the
+test-fork `--add-opens`, the EE deps (if still javax-era), JaCoCo ≥ 0.8.12, surefire ≥ 2.22.2 — don't add ops for those.
 
-## Walls → the op to add (else bail)
-| Symptom | Op to emit |
+## Add to `recipeList` when a wall shows (else bail)
+| Symptom | Recipe to add |
 |---|---|
-| `Unsupported class file major version 61` / `ASM ClassReader failed` / Spring component-scan `SimpleMetadataReader` NPE | **Spring Boot** bump (below). If on SB ≥ 3.2 it's a *transitive* old ASM → no recipe covers a forced transitive bump → **bail `I_MADE_MANUAL_EDIT`**. |
-| `Cannot define class using reflection` / `Mockito cannot mock` (old ByteBuddy) | covered by `UpgradeBuildToJava17`; if it persists, no unparametrized recipe forces ByteBuddy → **bail**. |
-| Lombok `NoSuchFieldError: JCTree$JCImport.qualid` (too-old Lombok on JDK 17) | `UpgradeBuildToJava17` floors Lombok to 1.18.30+; if not → **bail**. |
-| Gradle: `Inconsistent JVM-target … compileJava (17) / compileKotlin (M)` | `intent set_target` already sets `kotlin { jvmToolchain(17) }`. |
-| `package javax.xml.bind does not exist` during the recipe run | emit the recipe with `env: from` (project still compiles under 11), then continue. |
-
-## Spring Boot (only when a wall above points here)
-- **SB 2.0–2.4 → 2.7** (Spring < 5.3 component-scans with an ASM that can't read v61): `recipe to org.openrewrite.java.spring.boot2.UpgradeSpringBoot_2_7`. Don't hand-pick an intermediate version.
-- **SB 2.x → 3.3** (need Spring 6 / Security 6 / jakarta on 17): `recipe to org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_3` (does javax→jakarta + Security 6). SB 1.x must first go to 2.7.
+| `Unsupported class file major version 61` / ASM / Spring component-scan `SimpleMetadataReader` NPE | `org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_3` (or `…boot2.UpgradeSpringBoot_2_7` for SB 2.0–2.4 on the 5.3 ASM floor). On SB ≥ 3.2 it's a *transitive* old ASM no recipe forces → **bail `I_MADE_MANUAL_EDIT`**. |
+| Lombok / Mockito / ByteBuddy too old for 17 | covered by `UpgradeBuildToJava17`; if it persists, no unparametrized recipe forces the transitive version → **bail**. |
+| `package javax.xml.bind does not exist` while the recipe runs | the harness runs the recipe under jv_from where it still compiles — no action. |
 
 ## Bail labels (emit instead of improvising)
-- `RECIPE_PATH_UNREACHABLE` — a named recipe artifact doesn't resolve in the mirror.
+- `RECIPE_PATH_UNREACHABLE` — a recipe artifact doesn't resolve in the mirror.
 - `CWE_UNFIXABLE_OFFLINE` — a resolved dep has a known CWE and no fixed version is in the mirror.
-- `I_MADE_MANUAL_EDIT` — a wall needs a change no catalog recipe / intent provides (e.g. forced transitive ByteBuddy/ASM, SB1.x app on SB2-removed APIs, a removed-API source rewrite).
+- `I_MADE_MANUAL_EDIT` — a wall needs a change no catalog recipe provides (forced transitive ByteBuddy/ASM, SB1.x app on SB2-removed APIs, a removed-API source rewrite).

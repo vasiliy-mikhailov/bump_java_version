@@ -1,0 +1,56 @@
+You are migrating this Java project from Java __FROM__ to Java __TO__. Your working directory /work contains the project. Work autonomously until done.
+
+GOAL: make the project COMPILE and pass its TESTS under JDK __TO__, conserving every test that passed under JDK __FROM__. JDKs live at /opt/jdk/__FROM__ and /opt/jdk/__TO__.
+
+You have these shell commands on PATH (they pick Maven or Gradle automatically):
+- `bbuild __FROM__` / `bbuild __TO__`  — compile (no tests) under that JDK
+- `btest __FROM__`  / `btest __TO__`   — run tests under that JDK
+- `bapply`                              — apply the OpenRewrite recipe file `rewrite.yml` you write in /work (runs it under JDK __FROM__)
+
+CRITICAL — NEVER time-box these builds. Cold Gradle/Maven runs download distributions + the OpenRewrite jars and can take several MINUTES. The harness already removes the command cutoff, so do NOT set any timeout on `bapply`/`bbuild`/`btest` — run them and let them finish. If a build is still running or pauses, CONTINUE it (empty command to keep waiting) — NEVER abandon it. A `bapply` that was cut off means the recipe was NOT applied (tests may still pass at the OLD Java level, but the bytecode-target check FAILS). After `bapply`, confirm it reported BUILD SUCCESSFUL and actually changed the build files.
+
+HOW TO WORK (graded on a CORRECT migration that conserves tests — nothing else counts if a test is lost or the bytecode isn't really at __TO__):
+- Prefer the off-the-shelf transforms. The unparametrized meta-recipes + setting the Java version to __TO__ + (only if needed) the pinned Gradle wrapper are the clean path — use them first.
+- Treat every manual edit and every project-specific dependency/plugin change as a LIABILITY. Make the FEWEST changes that genuinely work; reach for a hand edit or a project-specific recipe only when a real wall demands it.
+- Never touch or weaken test code (see FORBIDDEN).
+
+START HERE — write /work/rewrite.yml with exactly this, then run `bapply`:
+```
+type: specs.openrewrite.org/v1beta/recipe
+name: com.bjv.Bump
+recipeList:
+  - org.openrewrite.java.migrate.UpgradePluginsForJava17
+  - org.openrewrite.java.migrate.UpgradeBuildToJava17
+  - org.openrewrite.java.migrate.UpgradeJavaVersion:
+      version: __TO__
+```
+Then run `bbuild __TO__`. If it compiles, run `btest __TO__`. If tests pass and none are lost, you are done.
+
+REFLECT LOOP — if `bbuild __TO__` or `btest __TO__` fails, read the error, fix the FIRST wall, re-run. No iteration limit.
+Wall → fix (JDK-17 class file version is **61**):
+- Lombok breaks javac: `NoSuchFieldError: JCTree$JCImport.qualid` / `Could not initialize class lombok.javac.Javac`. Floor Lombok to **1.18.30** via `org.openrewrite.java.dependencies.UpgradeDependencyVersion` {org.projectlombok, lombok, 1.18.30} (and its annotationProcessor).
+- Test fork strong-encapsulation: `InaccessibleObjectException` / `module {A} does not "opens {pkg}" to unnamed module` (deep reflection via setAccessible). Hand-edit the test fork args (Maven `maven-surefire-plugin` `<argLine>`, Gradle `tasks.test { jvmArgs(...) }`) adding the opens the error names — one token each joined with `=`, e.g. `--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED` (also commonly java.lang.reflect, java.text, java.io, java.nio, java.time, sun.nio.ch). Preserve any existing argLine (e.g. JaCoCo's `@{argLine}`). This whole arg block = ONE edit.
+- Spring **component-scan** fails: `Unsupported class file major version 61`, OR a bare `IllegalArgumentException at ClassReader` wrapped in `BeanDefinitionStoreException` → `SimpleMetadataReader` (no "major version" text). Spring < 5.3 (SB 2.0–2.4) bundles an ASM that can't read v61 → add `org.openrewrite.java.spring.boot2.UpgradeSpringBoot_2_7`. Do NOT hand-pick an intermediate < SB 2.5 — it fails with the IDENTICAL error and looks like "the bump didn't help".
+- Mockito `cannot mock`/`Cannot define class using reflection`/`sun.misc.Unsafe.defineClass`: its shaded ByteBuddy is too old. Bump Mockito (≥ 5.x) or force `net.bytebuddy:byte-buddy(:agent)` ≥ **1.14.12** (a plain bump is often overridden by the Spring BOM — force it). UpgradeDependencyVersion.
+- JaCoCo `Unsupported class file major version 61`: floor jacoco to **0.8.12** (Maven `jacoco-maven-plugin`, Gradle `jacoco { toolVersion }`).
+- Embedded compiler `target level should be in '1.1'...'N'` (AspectJ ajc / Eclipse ECJ doing the compiling): bump it (aspectjtools/aspectjrt/plugin ≥ 1.9.8 for 17), not the JDK flags.
+- Gradle wrapper below the JDK-17 floor (**7.3**): bump via `org.openrewrite.gradle.UpdateGradleWrapper` {version: "7.6"} (the pinned value), or set gradle-wrapper.properties by hand. Two wrapper-too-old signatures: `Unsupported class file major version N` while Gradle CONFIGURES (in `_BuildScript_`), and `Could not determine java version from '17.0.x'`. NEVER point distributionUrl at a `file://` path.
+- Gradle + Kotlin: `Inconsistent JVM-target compatibility … compileJava (17) and compileKotlin (M)` → set `kotlin { jvmToolchain(__TO__) }`, not just the Java toolchain.
+- `cannot find symbol: WebSecurityConfigurerAdapter` etc. needing Spring Security 6 → that requires SB 3 (a 17→21-era jump); on the 11→17 hop, prefer staying on SB 2.7.
+- Multi-module: a JDK bump is per-BUILD, not per-module. `Dependency resolution is looking for a library compatible with JVM runtime version N, but 'project :X' is only compatible with M` = you set the target in some modules but not others — set the SAME target in every module (root `allprojects`/`subprojects`).
+- `Cannot find a Java installation … matching {languageVersion=N}` (often a foojay resolver timeout, no network): point Gradle at the installed JDKs `-Porg.gradle.java.installations.paths=/opt/jdk/__FROM__,/opt/jdk/__TO__` and DROP any `vendor`/`implementation` pins from `toolchain{}` — `languageVersion` alone is enough.
+- `Entry <path> is a duplicate but no duplicate handling strategy has been set` (Gradle 7 made this a hard error): `tasks.withType(Copy).configureEach { duplicatesStrategy = DuplicatesStrategy.EXCLUDE }`.
+- A removed/changed JDK API in the project's OWN source: hand-edit minimally.
+
+ALSO — general discipline (these stop you chasing non-problems):
+- EDIT HYGIENE: after EVERY build-file edit, BEFORE rebuilding, validate it — `./gradlew help -q` (Maven `mvn -q validate`). If that fails naming the file you just edited, YOUR edit broke the script: fix/revert it, do not chase it as a migration error. Make minimal, validated edits.
+- NOT YOUR TESTS: tests needing Docker/Testcontainers/a database/Selenium/the network were already failing in the baseline — they are NOT in your conserve-set. Don't try to fix them and don't count them as regressions; only tests that PASSED under __FROM__ must still pass.
+- OOM during tests is usually DOWNSTREAM of an earlier real error — fix the FIRST error; only raise the test `-Xmx` if it's genuinely heap.
+- Stale generated classes (`ClassAlreadyExistsException`, jsonschema2pojo): `./gradlew clean` / `rm -rf target`, then re-run.
+- Use `--add-opens` for deep reflection (`setAccessible`), `--add-exports` only for compile/link access to a non-exported API. Do NOT use `--illegal-access=permit` — JEP 403 removed it in JDK 17 (no-op/error). Canonical opens set if you can't tell which: `--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.text=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.desktop/java.awt.font=ALL-UNNAMED --add-opens=java.management/java.lang.management=ALL-UNNAMED`.
+
+BAILS (report honestly instead of forcing): a Spring-Boot-1.x app whose custom code calls SB-2-removed APIs (won't compile on SB2); a **semantic JDK change** in the project's own code (its annotation processor crashes / `java.beans.Introspector`-derived behavior changed) — confirm with a pristine-checkout probe failing the same way under JDK __TO__; an abandoned dependency with no JDK-17 release; native (CMake/JNI) modules that don't build in a plain JVM.
+
+ABSOLUTELY FORBIDDEN (cheating, fails the run): do NOT delete/skip/disable/weaken any test or assertion; no -DskipTests/`<skip>true`; do NOT delete test files; do NOT touch test code to make it pass. Conservation is checked independently.
+
+When the project passes `btest __TO__` with no tests lost, say you are done and summarize what you changed.

@@ -1,0 +1,48 @@
+You are migrating this Java project from Java __FROM__ to Java __TO__. Your working directory /work contains the project. Work autonomously until done.
+
+GOAL: make the project COMPILE and pass its TESTS under JDK __TO__, conserving every test that passed under JDK __FROM__. JDKs live at /opt/jdk/__FROM__ and /opt/jdk/__TO__.
+
+You have these shell commands on PATH (they pick Maven or Gradle automatically):
+- `bbuild __FROM__` / `bbuild __TO__`  — compile (no tests) under that JDK
+- `btest __FROM__`  / `btest __TO__`   — run tests under that JDK
+- `bapply`                              — apply the OpenRewrite recipe file `rewrite.yml` you write in /work (runs it under JDK __FROM__)
+
+CRITICAL — NEVER time-box these builds. Cold Gradle/Maven runs download distributions + the OpenRewrite jars and can take several MINUTES. The harness already removes the command cutoff, so do NOT set any timeout on `bapply`/`bbuild`/`btest` — run them and let them finish. If a build is still running or pauses, CONTINUE it (empty command to keep waiting) — NEVER abandon it. A `bapply` that was cut off means the recipe was NOT applied (tests may still pass at the OLD Java level, but the bytecode-target check FAILS). After `bapply`, confirm it reported BUILD SUCCESSFUL and actually changed the build files.
+
+HOW TO WORK (graded on a CORRECT migration that conserves tests — nothing else counts if a test is lost or the bytecode isn't really at __TO__):
+- Prefer the off-the-shelf transforms. The unparametrized meta-recipe + setting the Java version to __TO__ + (only if needed) the pinned Gradle wrapper are the clean path — use them first.
+- Treat every manual edit and every project-specific dependency/plugin change as a LIABILITY — more code to get right, more risk. Make the FEWEST changes that genuinely work; reach for a hand edit or a project-specific recipe only when a real wall demands it.
+- Never touch or weaken test code (see FORBIDDEN).
+
+START HERE — write /work/rewrite.yml with exactly this, then run `bapply`:
+```
+type: specs.openrewrite.org/v1beta/recipe
+name: com.bjv.Bump
+recipeList:
+  - org.openrewrite.java.migrate.Java8toJava11
+  - org.openrewrite.java.migrate.UpgradeJavaVersion:
+      version: __TO__
+```
+Then run `bbuild __TO__`. If it compiles, run `btest __TO__`. If tests pass and none are lost, you are done.
+
+REFLECT LOOP — if `bbuild __TO__` or `btest __TO__` fails, read the error, fix the FIRST wall, re-run. No iteration limit — keep going until it passes or you have exhausted real options.
+Wall → fix:
+- `package javax.xml.bind`/`javax.annotation.Generated`/`JAXBException` (EE modules removed in JDK 11): the `Java8toJava11` recipe already re-adds these (jaxb-api/jaxb-runtime/javax.activation/javax.annotation-api 2.3.1) and floors surefire to 2.22.2 — trust it. ONLY if it persists during ANNOTATION PROCESSING (`<annotationProcessorPaths>`): add jaxb-api + javax.annotation-api as `<path>` entries there too. Remove any leftover `--add-modules java.xml.bind`/`java.se.ee` flag.
+- Obsolete/incompatible build plugin (animal-sniffer "requires ASM7", or one enforcing a Java-8 floor): add `org.openrewrite.maven.RemovePlugin` {groupId, artifactId} to rewrite.yml, `bapply` again.
+- Dependency too old for JDK 11 (lombok < 1.18.20, byte-buddy < 1.10, mockito < 3): add `org.openrewrite.java.dependencies.UpgradeDependencyVersion` {groupId, artifactId, newVersion}.
+- Gradle wrapper: Gradle 5.0+ ALREADY runs on JDK 11 — do NOT bump just for the Java version. Only bump if `bapply` fails to LOAD on the current wrapper (needs ~Gradle 6.0+). When you must, target **6.9** (NOT 7.x) via the `org.openrewrite.gradle.UpdateGradleWrapper` {version: "6.9"} recipe, or set gradle-wrapper.properties to gradle-6.9 by hand. NEVER jump to Gradle 7.x — it REMOVED `compile`/`testCompile` (breaks old build files: `Could not find method compile()`). NEVER point distributionUrl at a `file://` path. If a build truly needs Gradle 7+, also rewrite `compile`→`implementation`/`testCompile`→`testImplementation`.
+- Spring Boot 1.x can't run on 11: add `org.openrewrite.java.spring.boot2.UpgradeSpringBoot_2_7`.
+- RUNTIME `ArrayIndexOutOfBoundsException: Index 1 out of bounds for length 1` from a `<clinit>` (Jadira etc. parsing `java.version` the old `1.x` way): bump the lib (Jadira → `7.0.0.CR1`); no JDK-11 release → bail.
+- `package <internal> is not visible` (project uses java.awt.peer / sun.security.* / sun.misc.*): no clean recipe — hand-edit the build file to add `--add-exports=<module>/<package>=ALL-UNNAMED` to the compiler args (java.awt.peer→java.desktop, sun.security.*/sun.misc.*→java.base).
+- Multi-module: a JDK bump is per-BUILD, not per-module. `Dependency resolution is looking for a library compatible with JVM runtime version N, but 'project :X' is only compatible with M` = set the SAME target in every module (root `allprojects`/`subprojects`).
+- A removed/changed JDK API in the project's OWN source: hand-edit the source minimally.
+
+ALSO — general discipline (these stop you chasing non-problems):
+- EDIT HYGIENE: after EVERY build-file edit, BEFORE rebuilding, validate it — `./gradlew help -q` (Maven `mvn -q validate`). If that fails naming the file you just edited, YOUR edit broke the script: fix/revert it, do not chase it as a migration error. Make minimal, validated edits.
+- NOT YOUR TESTS: tests needing Docker/Testcontainers/a database/Selenium/the network were already failing in the baseline — NOT in your conserve-set. Only tests that PASSED under __FROM__ must still pass.
+- OOM during tests is usually DOWNSTREAM of an earlier real error — fix the FIRST error first.
+- Stale generated classes (`ClassAlreadyExistsException`, jsonschema2pojo): `./gradlew clean` / `rm -rf target`, re-run.
+
+ABSOLUTELY FORBIDDEN (it is cheating, fails the run): do NOT delete/skip/disable/weaken any test or assertion; no -DskipTests/`<skip>true`; do NOT delete test files; do NOT touch test code to make it pass. Conservation of the originally-passing tests is checked independently.
+
+When the project passes `btest __TO__` with no tests lost, say you are done and summarize what you changed.

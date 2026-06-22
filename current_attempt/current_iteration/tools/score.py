@@ -13,10 +13,14 @@ def passet(root):
     s = set()
     for x in glob.glob(root + "/**/TEST-*.xml", recursive=True):
         try: r = ET.parse(x).getroot()
-        except Exception: continue
+        except Exception as e: sys.stderr.write(f"passet: skipped unparseable {x}: {e}\n"); continue
+        # surefire 3.x writes classname=parametrized display-name (not FQCN) -> cross-class
+        # param cases collide in the set; the TEST-<FQCN>.xml filename carries the true FQCN.
+        base = os.path.basename(x)
+        cls = base[5:-4] if base.startswith("TEST-") and base.endswith(".xml") else ""
         for tc in r.iter("testcase"):
             if not any(c.tag in ("failure", "error", "skipped") for c in tc):
-                s.add(tc.get("classname", "") + "#" + tc.get("name", ""))
+                s.add((cls or tc.get("classname", "")) + "#" + tc.get("name", ""))
     return s
 
 # --- effective bytecode target (feature = major-44); skip build-logic + multi-release ---
@@ -29,7 +33,8 @@ def _major(p):
         with open(p, "rb") as f: h = f.read(8)
         if len(h) < 8 or h[:4] != b"\xca\xfe\xba\xbe": return None
         return struct.unpack(">H", h[6:8])[0]
-    except Exception: return None
+    except Exception as e:
+        sys.stderr.write(f"_major: unreadable class {p}: {e}\n"); return None
 def efftarget(root):
     mains, tests = [], []
     for dp, _, fn in os.walk(root):
@@ -48,7 +53,7 @@ def efftarget(root):
 def lost(pre, post):
     def norm(line):
         m = line.rsplit("#", 1)[-1]
-        return m.split("(")[0].split("[")[0].strip().lower()
+        return m.split("(")[0].split("[")[0].split("{")[0].strip().lower()
     post_exact = Counter(post); unmatched = []
     for p in pre:
         if post_exact[p] > 0: post_exact[p] -= 1
@@ -79,15 +84,16 @@ def cwe_summary(path):
     try:
         d = json.loads(raw)
     except Exception:
-        # osv emits non-JSON when there's nothing to scan (e.g. Gradle .kts w/o a lockfile) — that is
-        # "no known CWEs", NOT an error. Strip any preamble; else treat no-sources/empty as clean.
+        # osv emits non-JSON when it cannot scan (e.g. Gradle .kts w/o a lockfile). P16: that is UNKNOWN,
+        # NOT "clean" — defaulting unscannable -> 0 vulns would falsely pass the CWE gate once it gates.
+        # Strip any preamble; if still unparseable, report UNKNOWN (-1) so the gate can never pass on it.
+        # ROOT FIX (tracked stopgap): generate a lockfile so osv scans the resolved/declared deps.
         i, j = raw.find("{"), raw.rfind("}")
         try:
             d = json.loads(raw[i:j+1])
         except Exception:
-            if not raw.strip() or "no package sources" in raw.lower() or "no sources" in raw.lower():
-                return {"vulns": 0, "packages": 0, "by_severity": {}, "note": "no_scannable_sources"}
-            return {"vulns": -1, "packages": -1, "by_severity": {}, "note": "scan_unreadable"}
+            note = "no_scannable_sources" if (not raw.strip() or "no package sources" in raw.lower() or "no sources" in raw.lower()) else "scan_unreadable"
+            return {"vulns": -1, "packages": -1, "by_severity": {}, "note": note}
     sev = Counter(); ids = set(); pkgs = set()
     for res in d.get("results", []):
         for pkg in res.get("packages", []):
@@ -116,6 +122,9 @@ if mode == "passet":
 # mode == final
 ws, pre_f, frm, to, comprc, postrc, cwe_json, out_dir = sys.argv[2:10]
 frm, to, comprc, postrc = int(frm), int(to), int(comprc), int(postrc)
+# reward penalty inputs: model-chosen parametric recipes + manual edits (each ×0.9). Optional, default 0.
+parametric = int(sys.argv[10]) if len(sys.argv) > 10 else 0
+edits = int(sys.argv[11]) if len(sys.argv) > 11 else 0
 pre = [x for x in open(pre_f).read().split("\n") if x.strip()] if os.path.exists(pre_f) else []
 post = sorted(passet(ws))
 open(out_dir + "/post_set.txt", "w").write("\n".join(post))
@@ -135,10 +144,13 @@ elif ETGT >= 0 and ETGT < to:
 else:
     # CWE is REPORTED, not yet gating (threshold TBD) — record but don't fail on it
     verdict = "PASS"
+# reward = gate_pass × 0.9^(parametric recipes + manual edits); 0 if the gate didn't pass
+reward = round(0.9 ** (parametric + edits), 4) if verdict == "PASS" else 0.0
 res = {"slug": os.path.basename(out_dir.rstrip("/")), "hop": f"{frm}->{to}", "verdict": verdict,
        "pre_pass": len(pre), "post_pass": len(post), "lost": LOST,
        "compile_rc": comprc, "test_rc": postrc, "effective_target": ETGT,
+       "parametric_recipes": parametric, "edits": edits, "reward": reward,
        "dep_cwes": CWE}
 json.dump(res, open(out_dir + "/result.json", "w"), indent=1)
 print("VERDICT", verdict, "pre", len(pre), "post", len(post), "lost", LOST,
-      "target", ETGT, "cwes", CWE.get("vulns"))
+      "target", ETGT, "cwes", CWE.get("vulns"), "parametric", parametric, "edits", edits, "reward", reward)
