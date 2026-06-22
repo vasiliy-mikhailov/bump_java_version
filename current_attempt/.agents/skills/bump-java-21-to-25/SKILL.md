@@ -9,6 +9,8 @@ Migrate the project in your working directory from Java 21 to Java 25. GOAL: it 
 
 ## Tools — standard only (JDKs 21 and 25, Maven or Gradle, OpenRewrite from Maven Central)
 Three operations recur below; run each with the two JDKs — no project-specific scripts:
+
+**FIRST detect the build tool and use ONLY it for every operation:** `pom.xml` present → Maven; otherwise (`build.gradle`/`build.gradle.kts`) → Gradle. **NEVER introduce the other build system** — do NOT create a `pom.xml` in a Gradle project (or a `build.gradle` in a Maven one). The build/test gate compiles whatever build file is present, so adding the wrong one silently breaks dependency resolution (deps declared in the project's real build tool show up as `package … does not exist`).
 - **compile under JDK N** — Maven: `JAVA_HOME=<jdkN> mvn -B -ntp -DskipTests compile`; Gradle: `./gradlew -Dorg.gradle.java.home=<jdkN> compileJava` (also `compileKotlin`/`compileTestJava`).
 - **test under JDK N** — Maven: `JAVA_HOME=<jdkN> mvn -B -ntp test`; Gradle: `./gradlew -Dorg.gradle.java.home=<jdkN> test`.
 - **apply the OpenRewrite program** — write `rewrite.yml` (below), then run it **under JDK 21 with the Java-25 recipe artifacts**:
