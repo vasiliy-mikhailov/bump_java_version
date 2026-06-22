@@ -35,6 +35,14 @@ else PARAM=0; fi
 PARAM=${PARAM:-0}; echo "$PARAM" > "$O/param.txt"
 echo "parametric_recipes=$PARAM ; diff_lines=$(wc -l <"$O/agent.diff" 2>/dev/null)"
 
+# Gate the project as its ORIGINAL build tool (P16 structural fix; a prose skill guard can't stop a
+# stochastic agent). The pom.xml-based detector (jvmjob/bbuild) flips to Maven if the agent introduced a
+# pom.xml in a Gradle project (or vice-versa), breaking the gate (deps live in the real tool). Drop any
+# agent-introduced wrong-tool build file before gating.
+case "$BT" in
+  *gradle) [ -f "$BJV_WS/pom.xml" ] && { echo "gate-fix: dropping agent-introduced pom.xml (project is Gradle)"; rm -f "$BJV_WS/pom.xml"; } ;;
+  *maven)  for g in build.gradle build.gradle.kts settings.gradle settings.gradle.kts; do [ -f "$BJV_WS/$g" ] && { echo "gate-fix: dropping agent-introduced $g (project is Maven)"; rm -f "$BJV_WS/$g"; }; done ;;
+esac
 echo "=== [4] gate (host bjv + score.py) ==="
 r1_gate 0   # verdict only; final reward computed after the scoring agent supplies manual-edit count
 V=$(grep -aoE 'VERDICT [A-Z_]+' "$O/verdict.txt" | awk '{print $2}')
