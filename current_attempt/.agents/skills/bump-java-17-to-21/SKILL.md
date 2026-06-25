@@ -24,6 +24,9 @@ CRITICAL — NEVER time-box these builds. Cold Gradle/Maven runs download distri
 - Treat every manual edit and every project-specific dependency/plugin change as a LIABILITY. Make the FEWEST changes that genuinely work.
 - Never touch or weaken test code (see FORBIDDEN).
 
+## Proactive step — Gradle Kotlin/Java toolchain target (verify the bump actually landed; gated on a structural signal, not an error)
+On **Gradle** projects the `UpgradeJavaVersion` recipe frequently does NOT touch a Kotlin-DSL toolchain block — `java { toolchain { languageVersion.set(JavaLanguageVersion.of(N)) } }` (or the Groovy `JavaLanguageVersion.of(N)`). The build then **compiles cleanly but to the OLD bytecode** (effective target stays 17), so there is NO error to react to — it silently scores `FAIL_target_not_bumped`. So after applying the recipe, **grep the build files for `JavaLanguageVersion.of(`**: if any still names a version **< 21**, hand-edit it to `JavaLanguageVersion.of(21)` *before* the JDK-21 build. This is proactive precisely because the failure is silent — the structural trigger (a `JavaLanguageVersion.of(<21)` left in a build file) is unambiguous. For a **Kotlin** project this Java toolchain is enough: the Kotlin plugin derives `jvmTarget` from it, so bytecode goes to 21 with no separate `kotlinOptions.jvmTarget`/`jvmToolchain` change (add those only if you later hit the `Inconsistent JVM-target compatibility` wall below). Note the Gradle wrapper version is a *separate* axis — Gradle 7.5.1 still provisions a JDK-21 toolchain to compile, so a `<8.5` wrapper does NOT by itself block this hop (see the wrapper Troubleshooting row for when it genuinely does). Counts as a **free hop-fixed intent**, like setting the target.
+
 ## START HERE — write `rewrite.yml`, then apply it
 ```
 type: specs.openrewrite.org/v1beta/recipe
@@ -53,6 +56,7 @@ JDK-21 class-file version is **65** — a tool that reads bytecode via ASM must 
 - **A removed/changed JDK API in the project's OWN source:** hand-edit minimally.
 
 ## General discipline (these stop you chasing non-problems)
+- **VERIFY THE TARGET LANDED:** a clean JDK-21 build is NOT proof of a real bump — Gradle Kotlin-DSL `JavaLanguageVersion.of(N)` toolchains (and soft-pinned Maven `source`/`target`/`release`) can leave bytecode at 17 with zero errors. After the build, confirm no build file still has `JavaLanguageVersion.of(<21)` (see the proactive step). If nothing forced an edit, the recipe under-applied — fix the version declaration by hand.
 - **EDIT HYGIENE:** after EVERY build-file edit, BEFORE rebuilding, validate it — `./gradlew help -q` (Maven `mvn -q validate`). If that fails naming the file you just edited, YOUR edit broke the script: fix/revert it, do not chase it as a migration error. Make minimal, validated edits.
 - **NOT YOUR TESTS:** tests needing Docker/Testcontainers/a database/Selenium/the network were already failing in the baseline — NOT in your conserve-set. Only tests that PASSED under 17 must still pass.
 - OOM during tests is usually DOWNSTREAM of an earlier real error — fix the FIRST error; only raise `-Xmx` if it's genuinely heap.
