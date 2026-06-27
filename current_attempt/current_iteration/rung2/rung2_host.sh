@@ -17,7 +17,7 @@ case "$PRE" in ''|*[!0-9]*) echo "RESULT $SLUG NO_GREEN_BASELINE pre=$PRE"; exit
 echo "=== [2] OpenHands+Qwen agent (no limits) ==="
 set -a; . /home/vmihaylov/java_8_11_17_to_java_21/.env; set +a
 OHRUN=/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration/oh_run.py
-docker run --rm --network mvn-cache -e OC_KEY="$PROPOSER_API_KEY" \
+timeout -k 120 "${BJV_AGENT_GUARD:-14400}" docker run --rm --network mvn-cache -e OC_KEY="$PROPOSER_API_KEY" \
   -v "$BJV_WS:/work" -v "$OHRUN:/oh_run.py:ro" -v /home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration/rung2/bin:/r2bin:ro \
   -v /home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration/rung2/rung2_drive.sh:/drive.sh:ro -v /home/vmihaylov/java_8_11_17_to_java_21/current_attempt/.agents/skills/bump-java-${FROM}-to-${TO}/SKILL.md:/skill.md:ro \
   -v /home/vmihaylov/.m2-fitness:/root/.m2 -v /home/vmihaylov/maven-config/settings.xml:/root/.m2/settings.xml:ro \
