@@ -39,7 +39,7 @@ r1_apply(){ # applies $BJV_WS/rewrite.yml under jv_from; log -> $O/apply.log
 r1_gate(){ # arg1 = number of manual edits made
   local EDITS=${1:-0}
   # force a genuine JDK_to recompile: drop stale class outputs (else incremental skip => gate reads jv_from bytecode)
-  ALPINE sh -c "cd $BJV_WS && find . -type d \( -name target -o -name build -o -name .gradle \) -not -path '*/src/*' -prune -exec rm -rf {} + 2>/dev/null; find . -maxdepth 1 -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' \) -delete 2>/dev/null; find . -type f -name '*.mv.db' -delete 2>/dev/null; true"
+  ALPINE sh -c "cd $BJV_WS && find . \( -name build.gradle -o -name build.gradle.kts -o -name settings.gradle -o -name settings.gradle.kts \) 2>/dev/null | while read g; do d=\$(dirname \"\$g\"); rm -rf \"\$d/build\" \"\$d/.gradle\"; done; find . -name pom.xml 2>/dev/null | while read p; do d=\$(dirname \"\$p\"); rm -rf \"\$d/target\"; done; rm -rf ./.gradle 2>/dev/null; find . -maxdepth 1 -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' \) -delete 2>/dev/null; find . -type f -name '*.mv.db' -delete 2>/dev/null; true"
   bjv to build >"$O/compile.log" 2>&1; local BRC=$?
   bjv to test  >"$O/post.log"    2>&1; local TRC=$?
   jvm-run "$BJV_TO" jvmjob run "cd /work && osv-scanner scan source --offline-vulnerabilities --format json -r ." >"$O/cwe.json" 2>"$O/scan.err" || true
