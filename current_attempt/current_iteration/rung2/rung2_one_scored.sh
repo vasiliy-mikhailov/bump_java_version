@@ -8,7 +8,7 @@ if [ ! -f "$O/verdict.txt" ]; then
   reason=$(grep -aoE "UNSCORABLE_BUILD_TIMEOUT|UNSCORABLE_TEST_TIMEOUT|UNSCORABLE_SCORER_ERROR|BASELINE_TIMEOUT|NO_GREEN_BASELINE|CLONE_FAIL|NOCOMPILE|FETCH_FAIL" "$O/host.log" | head -1)
   printf '{"slug":"%s","repo":"%s","hop":"%s->%s","verdict":"%s","skipped":true}\n' "$SLUG" "$REPO" "$FROM" "$TO" "${reason:-NO_RESULT}" > "$O/skip.json"
 else
-  docker run --rm -v /tmp/hoptest:/tmp/hoptest -v /tmp/r2score_one.py:/s.py:ro python:3-slim python3 /s.py "$O" "$REPO" >/dev/null 2>&1
+  docker run --rm -v /tmp/hoptest:/tmp/hoptest -v "$CI/rung2/r2score_one.py:/s.py:ro" python:3-slim python3 /s.py "$O" "$REPO" >/dev/null 2>&1
 fi
 docker run --rm -v /tmp/bjv_ws:/w alpine rm -rf "/w/$SLUG" 2>/dev/null || true
 echo "DONE $SLUG"

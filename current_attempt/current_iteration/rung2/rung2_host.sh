@@ -1,10 +1,10 @@
 #!/bin/bash
 # Rung-2 host orchestrator: clone+baseline -> OpenHands+Qwen agent -> diff -> gate.
-# Args: REPO SHA SLUG [FROM=8] [TO=11]. Reuses /tmp/rung1lib.sh. Emits $O/{agent.log,agent.diff,rewrite.yml,verdict.txt,param.txt}
+# Args: REPO SHA SLUG [FROM=8] [TO=11]. Reuses the repo rung1lib.sh. Emits $O/{agent.log,agent.diff,rewrite.yml,verdict.txt,param.txt}
 set -uo pipefail
 REPO=$1; SHA=$2; SLUG=$3; FROM=${4:-8}; TO=${5:-11}
 export SLUG FROM TO
-. /tmp/rung1lib.sh
+. /home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration/rung2/rung1lib.sh
 
 echo "=== [1] clone+baseline $REPO @ $SHA (jv$FROM) ==="
 BT=$(r1_clone "$REPO" "$SHA") || { echo "CLONE_FAIL"; exit 0; }
