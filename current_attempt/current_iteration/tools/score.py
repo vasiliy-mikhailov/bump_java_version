@@ -28,6 +28,11 @@ MAIN = ("/target/classes/", "/build/classes/java/main/", "/build/classes/kotlin/
         "/build/classes/groovy/main/", "/build/classes/scala/main/", "/out/production/")
 TEST = ("/target/test-classes/", "/build/classes/java/test/", "/build/classes/kotlin/test/",
         "/build/classes/groovy/test/", "/out/test/")
+# Kotlin Multiplatform puts JVM bytecode at build/classes/kotlin/<target>/main|test/ (the target name, e.g.
+# `jvm`, sits between kotlin/ and main/test/) -- the fixed tuples miss it, so a KMP build looks like it has
+# NO main bytecode (false FAIL_no_main_bytecode / previously a soft-pin false PASS). js/native targets emit
+# no .class, so a broad match here is safe (the CAFEBABE check filters them out).
+KMP = re.compile(r"/build/classes/kotlin/[^/]+/(main|test)/")
 def _major(p):
     try:
         with open(p, "rb") as f: h = f.read(8)
@@ -40,7 +45,9 @@ def efftarget(root):
     for dp, _, fn in os.walk(root):
         pp = dp.replace("\\", "/") + "/"
         if "/META-INF/versions/" in pp or "/buildSrc/" in pp or "/build-logic/" in pp: continue
-        ismain = any(h in pp for h in MAIN); istest = any(h in pp for h in TEST)
+        km = KMP.search(pp)
+        ismain = any(h in pp for h in MAIN) or (km is not None and km.group(1) == "main")
+        istest = any(h in pp for h in TEST) or (km is not None and km.group(1) == "test")
         if not (ismain or istest): continue
         for f in fn:
             if not f.endswith(".class") or f == "module-info.class": continue

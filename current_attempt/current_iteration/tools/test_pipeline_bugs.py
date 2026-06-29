@@ -51,6 +51,20 @@ def test_efftarget_reads_main_ignores_test():
         _classfile(os.path.join(d, "target/test-classes/Bar.class"), 65)   # 65 = Java 21
         assert score.efftarget(d) == 17, f"main bytecode is 17, got {score.efftarget(d)}"
 
+def test_efftarget_reads_kotlin_multiplatform_jvm_main():
+    # KMP puts JVM bytecode at build/classes/kotlin/<target>/main/, not single-platform kotlin/main/ ->
+    # efftarget must still read it, else a real KMP PASS is a false FAIL_no_main_bytecode (rr_8_72 XenoECS).
+    with tempfile.TemporaryDirectory() as d:
+        _classfile(os.path.join(d, "build/classes/kotlin/jvm/main/Foo.class"), 55)   # 55 = Java 11
+        assert score.efftarget(d) == 11, f"KMP jvm/main bytecode must be read, got {score.efftarget(d)}"
+
+def test_efftarget_kmp_custom_target_name_and_test_split():
+    # robust to a custom JVM target name (not just 'jvm'); KMP test classes must NOT count as the main target.
+    with tempfile.TemporaryDirectory() as d:
+        _classfile(os.path.join(d, "build/classes/kotlin/desktop/main/Foo.class"), 61)  # 61 = Java 17 (main)
+        _classfile(os.path.join(d, "build/classes/kotlin/desktop/test/Bar.class"), 65)  # 65 = Java 21 (test)
+        assert score.efftarget(d) == 17, f"must read KMP main (17), not test (21), got {score.efftarget(d)}"
+
 def test_verdict_no_main_bytecode_is_not_pass():
     # build OK + tests conserved + ETGT == -1 (no inspectable main classes) used to fall through to PASS,
     # never verifying the target -> soft-pin false PASS. Must NOT be PASS.
