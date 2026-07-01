@@ -36,6 +36,38 @@ def test_lost_uuid_still_normalized():
     post = ["com.A#run_111e2222-e29b-41d4-a716-446655449999"]
     assert score.lost(pre, post) == 0, "volatile UUID test name should still be matched as conserved"
 
+def test_passet_folds_embedded_newlines_in_display_names():
+    # rr_17_57 (chalup/advent-of-code, 17->21): JUnit5 param display names carry LITERAL newlines
+    # (AoC "Cube(xs=1..2,\n ys=1..2)"). passet must fold each entry to ONE line, else "\n".join(set)
+    # serializes one test across multiple lines; the gate rebuilds `pre` via split("\n") (N fragments)
+    # and compares it to the intact live post-set -> false lost = fragments-entries (348 lines / 247 tests
+    # -> lost 101) -> false FAIL_test_conservation on a suite that is byte-for-byte conserved.
+    with tempfile.TemporaryDirectory() as d:
+        rep = os.path.join(d, "build/test-results/test"); os.makedirs(rep)
+        open(os.path.join(rep, "TEST-com.A.xml"), "w").write(
+            '<testsuite>'
+            '<testcase classname="com.A" name="Cube(xs=1..2,&#10; ys=1..2) intersects Cube(&#10;)"/>'
+            '<testcase classname="com.A" name="plain case"/>'
+            '</testsuite>')
+        s = score.passet(d)
+        assert len(s) == 2, f"expected 2 distinct tests, got {len(s)}: {s}"
+        assert all("\n" not in e and "\r" not in e for e in s), f"control char leaked into a set entry: {s}"
+        # round-trip through the file EXACTLY as the harness does (write "\n".join, rebuild by split("\n")):
+        rebuilt = [x for x in "\n".join(sorted(s)).split("\n") if x.strip()]
+        assert len(rebuilt) == 2, f"one line per test after serialization; got {len(rebuilt)} lines: {rebuilt}"
+        assert score.lost(rebuilt, sorted(s)) == 0, "a fully-conserved suite must show 0 lost after round-trip"
+
+def test_passet_control_char_names_stay_distinct():
+    # injective escape (not a lossy fold): two passing param names differing ONLY by a control char must stay
+    # DISTINCT, else a genuinely-lost test is hidden -> false PASS (review-critic-fixes adversarial finding).
+    with tempfile.TemporaryDirectory() as d:
+        rep = os.path.join(d, "build/test-results/test"); os.makedirs(rep)
+        open(os.path.join(rep, "TEST-com.B.xml"), "w").write(
+            '<testsuite><testcase classname="com.B" name="p(&#9;x)"/><testcase classname="com.B" name="p( x)"/></testsuite>')
+        s = score.passet(d)
+        assert len(s) == 2, f"tab-vs-space names must not merge into one entry, got {s}"
+        assert all("\n" not in e and "\t" not in e for e in s), f"control char must be escaped, not literal: {s}"
+
 # ---------- score.py: effective target (score-3 + score-4) ----------
 def test_efftarget_ignores_test_only_classes():
     # no MAIN classes, only TEST classes -> must be -1 (cannot confirm the bump from test bytecode),
@@ -74,6 +106,55 @@ def test_verdict_no_main_bytecode_is_not_pass():
 def test_verdict_real_pass_still_passes():
     # regression guard: a genuine bump (built, conserved, target==to) still PASSes.
     assert score.decide(pre=["com.A#t"], comprc=0, LOST=0, ETGT=17, to=17) == "PASS"
+
+# ---------- score.py: fresh-clone symmetry — generated-source residue reset (querydsl collision) ----------
+def test_resetgen_removes_querydsl_residue_so_gate_builds_clean():
+    # rr_8_179 (sa1341/JPA_WEB_BOARD, 8->11): the sealed baseline build leaves QueryDSL Q-classes under
+    # src/main/generated (untracked residue). The build-output clean misses it (it's under src/), so the
+    # gate re-compile's annotation processor hits its own leftovers -> javac "Attempt to recreate a file
+    # for type ...QReply" -> compileQuerydsl FAILED -> false FAIL_build_post (pre 5 post 0). resetgen must
+    # strip that dir so the gate compiles a pristine tree like the baseline's fresh clone.
+    with tempfile.TemporaryDirectory() as d:
+        gen = os.path.join(d, "src/main/generated/com/jun/jpacommunity/domain")
+        os.makedirs(gen)
+        for q in ("QReply", "QBoard", "QMember"):
+            open(os.path.join(gen, q + ".java"), "w").write("// generated Q-class residue\n")
+        # tracked hand-written source + the agent's build-file edit must SURVIVE (they are what we score).
+        hand = os.path.join(d, "src/main/java/com/jun/jpacommunity/domain")
+        os.makedirs(hand); open(os.path.join(hand, "Reply.java"), "w").write("class Reply {}\n")
+        open(os.path.join(d, "build.gradle"), "w").write("sourceCompatibility = '11'\n")
+        removed = score.resetgen(d)
+        assert not os.path.exists(os.path.join(d, "src/main/generated")), \
+            "querydsl generated residue must be removed so regeneration can't collide"
+        assert os.path.exists(os.path.join(hand, "Reply.java")), "hand-written source must survive the reset"
+        assert os.path.exists(os.path.join(d, "build.gradle")), "the agent's build-file edit must survive"
+        assert removed == ["src/main/generated"], f"expected only the gendir removed, got {removed}"
+
+def test_resetgen_spares_handwritten_generated_package():
+    # over-match guard (cf. the full-clean over-match bug that deleted source packages named 'build'):
+    # a hand-written package literally named 'generated' UNDER a language dir (src/main/java/.../generated)
+    # is real source, not querydsl residue. Only a DIRECT source-set child (src/<set>/generated) is residue.
+    with tempfile.TemporaryDirectory() as d:
+        pkg = os.path.join(d, "src/main/java/com/foo/generated")
+        os.makedirs(pkg); open(os.path.join(pkg, "Widget.java"), "w").write("package com.foo.generated;\n")
+        # also a nested 'generated' pkg that is NOT a direct src-set child must be spared
+        tpkg = os.path.join(d, "mod/src/test/kotlin/pkg/generated")
+        os.makedirs(tpkg); open(os.path.join(tpkg, "GenSpec.kt"), "w").write("// real test in a 'generated' pkg\n")
+        removed = score.resetgen(d)
+        assert os.path.exists(os.path.join(pkg, "Widget.java")), "hand-written com.foo.generated pkg must survive"
+        assert os.path.exists(os.path.join(tpkg, "GenSpec.kt")), "a nested 'generated' pkg (not a src-set child) must survive"
+        assert removed == [], f"nothing should be removed, got {removed}"
+
+def test_resetgen_handles_multimodule_and_test_sourceset():
+    # residue can appear per-module and per source-set; both src/main/generated and src/test/generated,
+    # under any module, are querydsl-style residue and must go.
+    with tempfile.TemporaryDirectory() as d:
+        for rel in ("api/src/main/generated/Q1.java", "core/src/test/generated/Q2.java"):
+            p = os.path.join(d, rel); os.makedirs(os.path.dirname(p), exist_ok=True); open(p, "w").write("//\n")
+        removed = sorted(score.resetgen(d))
+        assert not os.path.exists(os.path.join(d, "api/src/main/generated"))
+        assert not os.path.exists(os.path.join(d, "core/src/test/generated"))
+        assert removed == ["api/src/main/generated", "core/src/test/generated"], f"got {removed}"
 
 # ---------- check_program.py: anti-cheat (anticheat-1, anticheat-4) ----------
 def _rewrite_yml(body):

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Scorer for the sealed hop harness. Two modes (no host deps; runs in python:3-slim over the workspace):
+"""Scorer for the sealed hop harness (no host deps; runs in python:3-slim over the workspace):
   score.py passet <ws> <out_set_file>            -> write the passing-test set, print its count
+  score.py resetgen <ws>                         -> strip generated-source residue (fresh-clone symmetry)
   score.py final  <ws> <pre_set> <from> <to> <comprc> <postrc> <cwe_json> <out_dir>
                                                  -> compute post_set, LOST, effective_target, CWE summary,
                                                     decide the combined-gate verdict, write <out_dir>/result.json
+  score.py rescore <out_dir>                     -> RE-DECIDE an already-scored datapoint from its persisted
+                                                    pre_set.txt/post_set.txt (workspace reaped), rewrite
+                                                    result.json + verdict.txt; raw-count fallback if a set
+                                                    file is missing/empty
 """
-import sys, os, glob, json, struct, re
+import sys, os, glob, json, struct, re, shutil
 import xml.etree.ElementTree as ET
 from collections import Counter
 
@@ -20,8 +25,47 @@ def passet(root):
         cls = base[5:-4] if base.startswith("TEST-") and base.endswith(".xml") else ""
         for tc in r.iter("testcase"):
             if not any(c.tag in ("failure", "error", "skipped") for c in tc):
-                s.add((cls or tc.get("classname", "")) + "#" + tc.get("name", ""))
+                # JUnit5 parametrized/dynamic display names can carry LITERAL newlines/control chars (AoC
+                # "Cube(xs=1..2,\n ys=1..2)" cases). The set is line-serialized ("\n".join) and everything
+                # downstream (the gate's `pre` rebuild via split("\n"), grep -c pre-counts) treats one line
+                # as one test. An embedded newline splits ONE entry across N lines -> the gate compares N
+                # fragments against the intact live post-set -> false lost = fragments-entries ->
+                # false FAIL_test_conservation (rr_17_57 chalup/advent-of-code, 348 lines / 247 tests). Fold
+                # any control char INJECTIVELY (\xNN) so each entry stays one line WITHOUT merging distinct
+                # names (a lossy fold to a space collapses `case\tX` and `case X` -> a lost test is hidden -> false PASS).
+                key = (cls or tc.get("classname", "")) + "#" + tc.get("name", "")
+                s.add(re.sub(r"[\x00-\x1f\x7f]", lambda m: "\\x%02x" % ord(m.group()), key))
     return s
+
+# --- fresh-clone symmetry: strip generated-source residue before the gate build ---
+# Some builds run annotation processors that write generated sources INTO the tracked source tree, the
+# canonical case being QueryDSL's com.ewerk plugin -> src/main/generated. The gate's build-output clean
+# (build/, target/, .gradle/) MISSES these because they live under src/, so on the gate re-compile the
+# processor hits its own leftovers -> javac "error: Attempt to recreate a file for type ...QReply" ->
+# deterministic false FAIL_build_post. The baseline never sees it (it builds a fresh clone). A repo that
+# COMMITS its generated sources cannot reach the gate either -- a fresh-clone baseline would collide the
+# same way and be filtered out as NO_BASELINE_NOCOMPILE -- so any generated-source dir present at gate time
+# is regenerable residue: remove it to match the baseline's pristine checkout. Runs as root in python:3-slim
+# (the gate's PY() container), so it deletes the sealed build's root-owned residue offline, with no git dep.
+GEN_DIRS = {"generated", "generated-sources", "generated-src", "generated-java", "generated-test-sources"}
+def resetgen(root):
+    """Remove generated-source dirs written as a direct child of a source-set dir (src/<set>/generated).
+    Returns the removed paths (relative to root). Scoped to the src/<set>/<gendir> shape ON PURPOSE so a
+    hand-written package literally named 'generated' (src/main/java/.../generated) is never touched -- cf.
+    the full-clean over-match bug that once deleted source packages named 'build'."""
+    removed = []
+    for dp, dns, _ in os.walk(root):
+        # dp is a candidate source-set dir only if its parent is literally 'src' (…/src/main, …/src/test,
+        # …/module/src/integrationTest, …). Its 'generated' child is then querydsl-style residue.
+        if os.path.basename(os.path.dirname(dp)) != "src":
+            continue
+        for d in list(dns):
+            if d.lower() in GEN_DIRS:
+                full = os.path.join(dp, d)
+                shutil.rmtree(full, ignore_errors=True)
+                removed.append(os.path.relpath(full, root))
+                dns.remove(d)  # don't descend into what we just deleted
+    return removed
 
 # --- effective bytecode target (feature = major-44); skip build-logic + multi-release ---
 MAIN = ("/target/classes/", "/build/classes/java/main/", "/build/classes/kotlin/main/",
@@ -137,6 +181,47 @@ def main():
         s = passet(ws)
         open(out, "w").write("\n".join(sorted(s)))
         print(len(s))
+        return
+
+    if mode == "resetgen":
+        ws = sys.argv[2]
+        for r in resetgen(ws):
+            print("resetgen removed", r)
+        return
+
+    if mode == "rescore":
+        # Re-decide a completed datapoint from its PERSISTED artifacts (the sealed workspace is reaped after
+        # scoring, so passet() over it would return the empty set -> false total loss). Conservation is the
+        # rename-robust lost() over pre_set.txt vs post_set.txt read the SAME way -- both are line lists, so
+        # a newline-in-name entry fragments identically on both sides and cancels, giving the true loss. Raw
+        # pre_pass/post_pass scalars from result.json are used ONLY when a set file is missing/empty. Rewrites
+        # result.json + verdict.txt (never the set files) so r2score_one can re-derive score.json/reward.
+        out_dir = sys.argv[2]
+        res = json.load(open(os.path.join(out_dir, "result.json")))
+        def _lines(name):
+            p = os.path.join(out_dir, name)
+            if not os.path.exists(p): return None
+            return [x for x in open(p).read().split("\n") if x.strip()]
+        pre_l, post_l = _lines("pre_set.txt"), _lines("post_set.txt")
+        if not (pre_l and post_l):
+            # the scalar pre_pass-post_pass fallback is NOT rename-robust (it can flip the verdict either way
+            # vs the true set-diff), so refuse to guess a verdict from it -- mark unscorable instead.
+            open(os.path.join(out_dir, "verdict.txt"), "w").write("VERDICT UNSCORABLE_RESCORE_NO_SETS\n")
+            print("UNSCORABLE_RESCORE_NO_SETS (pre_set/post_set missing or empty; refusing rawcount guess)")
+            return
+        LOST = lost(pre_l, post_l); basis = "setdiff"; pre_for_decide = pre_l
+        comprc = int(res.get("compile_rc", 0)); ETGT = int(res.get("effective_target", -1))
+        to = int(str(res.get("hop", "0->0")).split("->")[-1] or 0)
+        param = int(res.get("parametric_recipes", 0)); edits = int(res.get("edits", 0))
+        verdict = decide(pre_for_decide, comprc, LOST, ETGT, to)
+        reward = round(0.9 ** (param + edits), 4) if verdict == "PASS" else 0.0
+        res.update({"verdict": verdict, "lost": LOST, "reward": reward, "rescored_by": basis})
+        json.dump(res, open(os.path.join(out_dir, "result.json"), "w"), indent=1)
+        line = ("VERDICT %s pre %s post %s lost %s target %s cwes %s parametric %s edits %s reward %s"
+                % (verdict, res.get("pre_pass"), res.get("post_pass"), LOST, ETGT,
+                   res.get("dep_cwes", {}).get("vulns"), param, edits, reward))
+        open(os.path.join(out_dir, "verdict.txt"), "w").write(line + "\n")
+        print(line + "  [rescored:%s]" % basis)
         return
 
     # mode == final

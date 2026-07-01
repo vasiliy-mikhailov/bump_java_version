@@ -48,6 +48,13 @@ echo "agent rc=$?" >> "$OUT/agent.log"
 
 # 4. combined gate under sealed jv_to
 bjv to build > "$OUT/compile.log" 2>&1; COMPRC=$?
+# reactive fresh-clone symmetry (see rung1lib): strip generated-source residue ONLY if the gate build collided
+# with regeneration, so committed sources under a 'generated' dir are never deleted from a repo that builds
+# fine. Signature: javac "Attempt to recreate a file" / "duplicate class".
+if [ "$COMPRC" != 0 ] && grep -qaE "Attempt to recreate a file|duplicate class" "$OUT/compile.log"; then
+  PY resetgen "$WS" > "$OUT/resetgen.log" 2>&1 || true
+  bjv to build > "$OUT/compile.log" 2>&1; COMPRC=$?
+fi
 bjv to test  > "$OUT/post.log"    2>&1; POSTRC=$?
 jvm-run "$TO" "osv-scanner scan source --offline-vulnerabilities -r . --format json" > "$OUT/cwe.json" 2>/dev/null || true
 PY final "$WS" "$OUT/pre_set.txt" "$FROM" "$TO" "$COMPRC" "$POSTRC" "$OUT/cwe.json" "$OUT"

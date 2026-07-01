@@ -42,6 +42,14 @@ r1_gate(){ # arg1 = number of manual edits made
   # force a genuine JDK_to recompile: drop stale class outputs (else incremental skip => gate reads jv_from bytecode)
   ALPINE sh -c "cd $BJV_WS && find . \( -name build.gradle -o -name build.gradle.kts -o -name settings.gradle -o -name settings.gradle.kts \) 2>/dev/null | while read g; do d=\$(dirname \"\$g\"); rm -rf \"\$d/build\" \"\$d/.gradle\"; done; find . -name pom.xml 2>/dev/null | while read p; do d=\$(dirname \"\$p\"); rm -rf \"\$d/target\"; done; rm -rf ./.gradle 2>/dev/null; find . -maxdepth 1 -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' \) -delete 2>/dev/null; find . -type f -name '*.mv.db' -delete 2>/dev/null; true"
   bjv to build >"$O/compile.log" 2>&1; local BRC=$?
+  # fresh-clone symmetry, REACTIVE (only on an actual collision, so committed hand-written sources under a
+  # dir named 'generated' are NEVER deleted from a repo that builds fine): if the gate build failed because
+  # an annotation processor hit generated-source residue the build-output clean missed (it lives under src/),
+  # strip that residue and rebuild once. Signature: javac "Attempt to recreate a file" / "duplicate class".
+  if [ "$BRC" != 0 ] && grep -qaE "Attempt to recreate a file|duplicate class" "$O/compile.log"; then
+    PY resetgen "$BJV_WS" >"$O/resetgen.log" 2>&1 || true
+    bjv to build >"$O/compile.log" 2>&1; BRC=$?
+  fi
   if [ "$BRC" = 124 ] || [ "$BRC" = 137 ]; then echo "UNSCORABLE_BUILD_TIMEOUT (build_rc=$BRC edits=$EDITS)"; return 0; fi
   bjv to test  >"$O/post.log"    2>&1; local TRC=$?
   if [ "$TRC" = 124 ] || [ "$TRC" = 137 ]; then echo "UNSCORABLE_TEST_TIMEOUT (test_rc=$TRC edits=$EDITS)"; return 0; fi

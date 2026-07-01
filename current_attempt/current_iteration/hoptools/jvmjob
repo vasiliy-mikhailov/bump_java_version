@@ -28,6 +28,14 @@ for _wp in $(find . -name gradle-wrapper.properties 2>/dev/null); do
 done
 tool() { if [ -f pom.xml ]; then echo mvn; elif [ -f ./gradlew ]; then echo gradlew; else echo gradle; fi; }
 mvncmd() { if [ -x ./mvnw ]; then echo ./mvnw; else echo mvn; fi; }
+# Kotlin Multiplatform: under Kotlin 1.9.20+ the plain `test` lifecycle task no longer wires the per-target
+# JVM test task (:jvmTest), so a bare `./gradlew test` runs 0 JVM tests and every pre-pass test looks LOST
+# (false FAIL_test_conservation, e.g. rr_17_158 bip21 17->21: pre 32, post 0). When the multiplatform plugin
+# is applied, also request `jvmTest` so the JVM tests run regardless of Kotlin version. `jvmTest` (not the
+# `allTests`/`check` aggregates) avoids js/native target tasks that can't run offline and avoids pulling in
+# lint/verification tasks; score.py passet() globs **/TEST-*.xml recursively, so build/test-results/jvmTest
+# is picked up automatically once the task runs. Plain-Java Gradle projects are untouched (is_kmp false).
+is_kmp() { grep -rhsE 'kotlin\("multiplatform"\)|kotlin-multiplatform|org\.jetbrains\.kotlin\.multiplatform|plugins\.kotlin\.?[mM]ultiplatform' --include='*.gradle' --include='*.gradle.kts' . 2>/dev/null | grep -vqE '^[[:space:]]*(//|#|\*)|apply[[:space:]]+false'; }
 case "${1:-}" in
   build) case "$(tool)" in
            mvn)     exec timeout -k 15 "${BJV_INNER:-5100}" "$(mvncmd)" -B -ntp -DskipTests test-compile;;
@@ -35,8 +43,15 @@ case "${1:-}" in
            gradle)  exec timeout -k 15 "${BJV_INNER:-5100}" gradle --no-daemon --rerun-tasks testClasses;; esac;;
   test)  case "$(tool)" in
            mvn)     exec timeout -k 15 "${BJV_INNER:-5100}" "$(mvncmd)" -B -ntp test -Dmaven.test.failure.ignore=true;;
-           gradlew) exec timeout -k 15 "${BJV_INNER:-5100}" sh ./gradlew --no-daemon test --continue --rerun-tasks;;
-           gradle)  exec timeout -k 15 "${BJV_INNER:-5100}" gradle --no-daemon test --continue --rerun-tasks;; esac;;
+           gradlew) timeout -k 15 "${BJV_INNER:-5100}" sh ./gradlew --no-daemon test --continue --rerun-tasks; trc=$?
+                    # KMP: run jvmTest as a SEPARATE invocation. A combined `test jvmTest` aborts at task
+                    # SELECTION when jvmTest is absent (--continue only continues past EXECUTION failures) ->
+                    # 0 XML -> false FAIL_test_conservation. Separate, its absence cannot suppress `test`.
+                    is_kmp && timeout -k 15 "${BJV_INNER:-5100}" sh ./gradlew --no-daemon jvmTest --continue --rerun-tasks
+                    exit "$trc";;
+           gradle)  timeout -k 15 "${BJV_INNER:-5100}" gradle --no-daemon test --continue --rerun-tasks; trc=$?
+                    is_kmp && timeout -k 15 "${BJV_INNER:-5100}" gradle --no-daemon jvmTest --continue --rerun-tasks
+                    exit "$trc";; esac;;
   scan)  exec timeout -k 15 "${BJV_INNER:-5100}" osv-scanner scan source --offline-vulnerabilities -r .;;
   run)   shift; exec timeout -k 15 "${BJV_INNER:-5100}" bash -lc "$*";;
   *) echo "usage: jvmjob build|test|scan|run \"<cmd>\"" >&2; exit 2;;
