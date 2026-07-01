@@ -15,7 +15,7 @@ while true; do
   td=$(totdone); [ "$td" -ge "$TARGET" ] && break
   avail=''; for h in 8 11 17 21; do [ "${CUR[$h]}" -le "$(qlen $h)" ] && avail="$avail $h"; done
   [ -z "$avail" ] && break
-  while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ] || [ "$(load1)" -ge "$CAP" ]; do sleep 8; done
+  while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do sleep 8; done   # load gate removed (operator request 2026-07-01); JOBS still caps concurrency
   best=''; bestm=999999
   for h in $avail; do m=$(( $(donec $h) + LAUNCHED[$h] - $(finc $h) )); [ "$m" -lt "$bestm" ] && { bestm=$m; best=$h; }; done
   h=$best
