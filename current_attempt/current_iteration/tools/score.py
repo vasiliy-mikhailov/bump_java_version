@@ -247,9 +247,14 @@ def main():
         try:
             import score_modules
             mods = [json.loads(l) for l in open(modules_file) if '"module"' in l and '"summary"' not in l]
-            if mods:
-                MODS = score_modules.score_modules(ws, mods)
-                modules_ok = MODS["all_modules_reached_target"]
+            if len(mods) >= 2:                               # engage per-module gate ONLY for multi-module repos;
+                MODS = score_modules.score_modules(ws, mods) # a single-module repo keeps the proven repo-level ETGT path
+                dt = MODS.get("modules") or []
+                if dt and all(m["effective_target"] >= m["to"] for m in dt):
+                    modules_ok = True                        # every module reached its own target -> genuine repo PASS
+                elif any(0 <= m["effective_target"] < m["to"] for m in dt):
+                    modules_ok = False                       # a module concretely sits below its target (sibling stuck low)
+                # else inconclusive (a module had no inspectable bytecode): leave None -> defer to repo-level ETGT
         except Exception as e:
             sys.stderr.write("module gate skipped: %s\n" % e)
 

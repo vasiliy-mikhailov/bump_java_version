@@ -7,10 +7,13 @@ bash $CI/rung2/detect_java_version.sh "$REPO" "$SHA" $O/detect.json
 det=$(cat $O/detect.json 2>/dev/null)
 detected=$(echo "$det" | sed -n 's/.*"detected": *\([0-9]*\).*/\1/p')
 bumpable=$(echo "$det" | grep -oE '"bumpable": *true')
-# module-level: a heterogeneous multi-module repo is NOT_A_BUMP at the repo level but bumpable per module
-modbump=$(grep -c '"bumpable": *true' $O/modules.jsonl 2>/dev/null || echo 0)
-if [ -z "$bumpable" ] && [ "${modbump:-0}" -gt 0 ]; then
-  detected=$(grep -oE '"from": *[0-9]+' $O/modules.jsonl | grep -oE '[0-9]+' | sort -n | head -1); bumpable=multimodule
+# module-level: reclaim a repo detect_java skipped when ALL its bumpable modules sit on ONE LTS hop (a single-
+# hop repo mis-skipped as multi/soft-pin/plugin) -> dispatch that hop; the per-module gate then scores each
+# module honestly. Modules that span MULTIPLE hops need the per-module iteration executor (follow-up), so they
+# stay NOT_A_BUMP: this never dispatches to a bump-java-$F-to-$T skill that does not exist.
+if [ -z "$bumpable" ] && [ -s "$O/modules.jsonl" ]; then
+  hops=$(grep -oE '"from": *[0-9]+, *"to": *[0-9]+' $O/modules.jsonl | sort -u); nhops=$(printf '%s\n' "$hops" | grep -c .)
+  if [ "${nhops:-0}" = "1" ]; then detected=$(printf '%s' "$hops" | grep -oE '"from": *[0-9]+' | grep -oE '[0-9]+'); bumpable=singlehop; fi
 fi
 if [ -z "$bumpable" ]; then
   printf '{"slug":"%s","repo":"%s","verdict":"NOT_A_BUMP","detect":%s}\n' "$SLUG" "$REPO" "${det:-null}" > $O/skip.json
@@ -24,8 +27,5 @@ case $detected in
   21|22|23|24)       F=21; T=25;;
   *) printf '{"slug":"%s","repo":"%s","verdict":"NOT_A_BUMP","detect":%s}\n' "$SLUG" "$REPO" "${det:-null}" > $O/skip.json; echo "NOT_A_BUMP (>=25 or unknown) $REPO"; exit 0;;
 esac
-# module-level: build under a JDK high enough for the HIGHEST module target (each module -> its own release)
-mod_maxto=$(grep -oE '"to": *[0-9]+' $O/modules.jsonl 2>/dev/null | grep -oE '[0-9]+' | sort -n | tail -1)
-[ -n "$mod_maxto" ] && [ "${mod_maxto:-0}" -gt "${T:-0}" ] && T=$mod_maxto
-echo "DISPATCH $REPO  detected=$detected -> hop $F->$T  (modules=${modbump:-?})"
+echo "DISPATCH $REPO  detected=$detected -> hop $F->$T  (bumpable=$bumpable)"
 bash $CI/rung2/rung2_one_scored.sh "$REPO" "$SHA" "$SLUG" "$F" "$T"
