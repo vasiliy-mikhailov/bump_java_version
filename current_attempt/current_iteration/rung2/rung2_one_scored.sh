@@ -1,7 +1,7 @@
 #!/bin/bash
 # One rung-2 repo for ANY hop: migrate -> gate -> score -> reap. Args: REPO SHA SLUG FROM TO
 REPO=$1; SHA=$2; SLUG=$3; FROM=$4; TO=$5
-CI=/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration
+CI=/home/vmihaylov/bump-java-version/current_attempt/current_iteration
 O=/tmp/hoptest/$SLUG; mkdir -p "$O"
 bash $CI/rung2/rung2_host.sh "$REPO" "$SHA" "$SLUG" "$FROM" "$TO" > "$O/host.log" 2>&1
 if [ ! -f "$O/verdict.txt" ]; then

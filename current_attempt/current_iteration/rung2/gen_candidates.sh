@@ -1,6 +1,6 @@
 #!/bin/bash
 FROM=${1:?usage: gen_candidates.sh <jv_from> <out> [maxtests] [mintests]}; OUT=${2:?}; MAX=${3:-80}; MIN=${4:-3}
-cp /home/vmihaylov/java_8_11_17_to_java_21/current_attempt/corpus/baselines_peryear.json.jsonl /tmp/_bl.jsonl
+cp /home/vmihaylov/bump-java-version/current_attempt/corpus/baselines_peryear.json.jsonl /tmp/_bl.jsonl
 docker run --rm -v /tmp:/t -e FROM=$FROM -e MAX=$MAX -e MIN=$MIN python:3-slim python3 -c "
 import json,os
 F=int(os.environ['FROM']); MX=int(os.environ['MAX']); MN=int(os.environ['MIN']); seen={}

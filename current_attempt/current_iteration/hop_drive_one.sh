@@ -5,8 +5,8 @@
 #       -> combined gate under sealed jv_to (build + conserve + target==jv_to + CWE scan).
 set -uo pipefail
 REPO=$1; SHA=$2; FROM=$3; TO=$4; SLUG=$5; AGENT=${6:-openhands}
-ITER=/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration
-SKILL=/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/.agents/skills/bump-java-version
+ITER=/home/vmihaylov/bump-java-version/current_attempt/current_iteration
+SKILL=/home/vmihaylov/bump-java-version/current_attempt/.agents/skills/bump-java-version
 export PATH="$ITER/hoptools:$PATH"
 WS=/tmp/bjv_ws/$SLUG
 OUT=${OUT_DIR:-$ITER/out}/$SLUG; mkdir -p "$OUT"

@@ -4,8 +4,8 @@
 #   v2_run.sh REPO SHA FROM TO SLUG ; env: OC_BASE OC_MODEL OC_KEY
 set -uo pipefail
 REPO=$1; SHA=$2; FROM=$3; TO=$4; SLUG=$5
-ITER=/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration
-SK=/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/.agents/skills/bump-java-$FROM-to-$TO/SKILL.md
+ITER=/home/vmihaylov/bump-java-version/current_attempt/current_iteration
+SK=/home/vmihaylov/bump-java-version/current_attempt/.agents/skills/bump-java-$FROM-to-$TO/SKILL.md
 export PATH="$ITER/hoptools:$PATH"
 WS=/tmp/bjv_ws/$SLUG
 OUT=${OUT_DIR:-$ITER/out}/$SLUG; mkdir -p "$OUT"

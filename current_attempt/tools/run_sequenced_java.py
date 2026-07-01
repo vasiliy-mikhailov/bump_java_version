@@ -18,7 +18,7 @@ Aggregate: compare PASS rate to iter-0 (UpgradeToJava21 one-shot).
 import json, os, subprocess, tempfile, shutil, time, uuid, threading, sys
 from concurrent.futures import ThreadPoolExecutor
 
-BASE = "/home/vmihaylov/java_8_11_17_to_java_21"
+BASE = "/home/vmihaylov/bump-java-version"
 ATTEMPT7 = f"{BASE}/attempt_7"
 IMAGE = "bump-allagents-sweep:latest"
 ENTRY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_one_stage_v2.sh")  # sibling entry script (attempt-owned)

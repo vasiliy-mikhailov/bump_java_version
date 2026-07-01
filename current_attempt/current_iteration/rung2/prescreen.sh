@@ -7,7 +7,7 @@ load1(){ awk '{print int($1)}' /proc/loadavg; }
 screen_one(){
   local REPO=$1 SHA=$2 MIN=$3 FROM=$4 RD=$5
   local SLUG=ps_$(echo $REPO|tr / _)
-  ( export SLUG FROM TO=$FROM; . /home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration/rung2/rung1lib.sh
+  ( export SLUG FROM TO=$FROM; . /home/vmihaylov/bump-java-version/current_attempt/current_iteration/rung2/rung1lib.sh
     r1_clone "$REPO" "$SHA" >/dev/null 2>&1 || { echo "$REPO clone_fail" >$RD/$SLUG.res; exit 0; }
     n=$(r1_baseline 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0;; esac
     if [ "$n" -ge "$MIN" ]; then echo "$REPO $SHA green=$n" >$RD/$SLUG.keep; else echo "$REPO green=$n" >$RD/$SLUG.res; fi

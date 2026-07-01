@@ -4,7 +4,7 @@
 # Reuses the sealed images + bjv + score.py. Java logic stays in the sealed image; this is orchestration.
 set -uo pipefail
 REPO=$1; SHA=$2; FROM=$3; TO=$4; SLUG=$5; PROG=$6
-ITER=/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration
+ITER=/home/vmihaylov/bump-java-version/current_attempt/current_iteration
 export PATH="$ITER/hoptools:$PATH"
 WS=/tmp/bjv_ws/$SLUG
 OUT=${OUT_DIR:-$ITER/out}/$SLUG; mkdir -p "$OUT"

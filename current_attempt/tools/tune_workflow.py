@@ -18,7 +18,7 @@ nohup since it blocks for the full sweep:  nohup tune_workflow.py rerun 6 > /tmp
 """
 import json, os, re, sys, time, shutil, subprocess, collections
 
-BASE = "/home/vmihaylov/java_8_11_17_to_java_21"
+BASE = "/home/vmihaylov/bump-java-version"
 A = BASE + "/current_attempt"
 TOOLS = A + "/tools"
 SWEEP = TOOLS + "/corpus_sweep.py"

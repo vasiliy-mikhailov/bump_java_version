@@ -2,7 +2,7 @@
 # Balanced round-robin over the 4 hop queues: each bite goes to the hop with the FEWEST (completed+inflight)
 # datapoints, screens inline (>=MINTESTS green), migrates via the two-step run_repo, scores. Even by hop until
 # the small queues exhaust, then continues on the big ones. Args: TARGET [JOBS=4] [LOADCAP=20] [MINTESTS=5]
-CI=/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration
+CI=/home/vmihaylov/bump-java-version/current_attempt/current_iteration
 TARGET=${1:-200}; JOBS=${2:-4}; CAP=${3:-20}; export BJV_MIN_TESTS=${4:-5}
 declare -A CUR LAUNCHED NEXT
 for h in 8 11 17 21; do CUR[$h]=1; LAUNCHED[$h]=0; done

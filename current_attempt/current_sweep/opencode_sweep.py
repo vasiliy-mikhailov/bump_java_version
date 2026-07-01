@@ -8,12 +8,12 @@ import os, sys, json, subprocess, uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
 
-BASE = "/home/vmihaylov/java_8_11_17_to_java_21"
+BASE = "/home/vmihaylov/bump-java-version"
 ACTIVE = f"{BASE}/current_attempt"
 SKILL = f"{ACTIVE}/.agents/skills/bump-java-version"
 CFG = f"{ACTIVE}/portability"
-DRIVE = "/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_sweep/opencode_drive_one.sh"
-OUT = "/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_sweep/out/opencode_sweep_out"
+DRIVE = "/home/vmihaylov/bump-java-version/current_attempt/current_sweep/opencode_drive_one.sh"
+OUT = "/home/vmihaylov/bump-java-version/current_attempt/current_sweep/out/opencode_sweep_out"
 M2 = "/home/vmihaylov/.m2-fitness"
 SETTINGS = "/home/vmihaylov/maven-config/settings.xml"
 IMAGE = "bump-opencode-sweep:latest"

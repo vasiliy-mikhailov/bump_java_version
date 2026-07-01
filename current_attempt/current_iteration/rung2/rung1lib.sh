@@ -1,7 +1,7 @@
 # Rung-1 shared harness. Source with:  SLUG=<slug> FROM=8 TO=11 . rung1lib.sh
 # Provides: r1_clone <repo> <sha> ; r1_baseline (echoes pre-count or NOCOMPILE) ;
 #           r1_apply (runs $BJV_WS/rewrite.yml under jv_from) ; r1_gate <edits> (writes verdict + score)
-I=/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration
+I=/home/vmihaylov/bump-java-version/current_attempt/current_iteration
 export PATH="$I/hoptools:$PATH"
 export BJV_WS=/tmp/bjv_ws/$SLUG BJV_FROM=$FROM BJV_TO=$TO BJV_NET=mvn-cache \
   BJV_M2=/home/vmihaylov/.m2-fitness BJV_SETTINGS=/home/vmihaylov/maven-config/settings.xml \

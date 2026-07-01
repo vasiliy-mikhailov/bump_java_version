@@ -1,7 +1,7 @@
 #!/bin/bash
 # STEP 1 — detect a repo's real current Java level + bumpability (static, no build). Args: REPO SHA [OUT.json]
 REPO=$1; SHA=$2; OUT=${3:-/dev/stdout}
-CI=/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration
+CI=/home/vmihaylov/bump-java-version/current_attempt/current_iteration
 WS=/tmp/detect_ws/$(echo $REPO | tr / _)
 rm -rf "$WS" 2>/dev/null
 mkdir -p $WS

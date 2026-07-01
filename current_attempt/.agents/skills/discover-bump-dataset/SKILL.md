@@ -11,7 +11,7 @@ have, and **validate** which ones actually compile into baselines — to grow th
 **jq**, and the project's build tool (**Maven**/**Gradle**). No project-specific scripts — you run the
 searches and checks yourself so the method can't rot.
 
-Repo root: `/home/vmihaylov/java_8_11_17_to_java_21`; the open attempt is `current_attempt/`.
+Repo root: `/home/vmihaylov/bump-java-version`; the open attempt is `current_attempt/`.
 
 > **Distribution: internal only.** This skill lives solely in the `bump_java_version` research repo.
 > It is **never** published to the public `bump-java-version-skill` repo — P11 ships only the portable
@@ -38,7 +38,7 @@ repos. Pull names from each corpus source (adapt the `jq` paths if a file's shap
 with `jq 'keys'` first):
 
 ```bash
-cd /home/vmihaylov/java_8_11_17_to_java_21
+cd /home/vmihaylov/bump-java-version
 {
   jq -r '.[]'                         current_attempt/dataset-repos.json
   jq -r '.[].repo'                    current_attempt/dataset-shas.json

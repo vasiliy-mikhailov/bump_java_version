@@ -4,7 +4,7 @@
 set -uo pipefail
 REPO=$1; SHA=$2; SLUG=$3; FROM=${4:-8}; TO=${5:-11}
 export SLUG FROM TO
-. /home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration/rung2/rung1lib.sh
+. /home/vmihaylov/bump-java-version/current_attempt/current_iteration/rung2/rung1lib.sh
 
 echo "=== [1] clone+baseline $REPO @ $SHA (jv$FROM) ==="
 BT=$(r1_clone "$REPO" "$SHA") || { echo "CLONE_FAIL"; exit 0; }
@@ -15,12 +15,12 @@ case "$PRE" in ''|*[!0-9]*) echo "RESULT $SLUG NO_GREEN_BASELINE pre=$PRE"; exit
 [ "$PRE" -lt ${BJV_MIN_TESTS:-5} ] && { echo "RESULT $SLUG NO_GREEN_BASELINE pre=$PRE<${BJV_MIN_TESTS:-5}"; exit 0; }
 
 echo "=== [2] OpenHands+Qwen agent (no limits) ==="
-set -a; . /home/vmihaylov/java_8_11_17_to_java_21/.env; set +a
-OHRUN=/home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration/oh_run.py
+set -a; . /home/vmihaylov/bump-java-version/.env; set +a
+OHRUN=/home/vmihaylov/bump-java-version/current_attempt/current_iteration/oh_run.py
 AGENT_NAME="bjvagent_${SLUG}_$$"
 timeout -k 120 "${BJV_AGENT_GUARD:-31536000}" docker run --rm --init --name "$AGENT_NAME" --network mvn-cache -e OC_KEY="$PROPOSER_API_KEY" \
-  -v "$BJV_WS:/work" -v "$OHRUN:/oh_run.py:ro" -v /home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration/rung2/bin:/r2bin:ro \
-  -v /home/vmihaylov/java_8_11_17_to_java_21/current_attempt/current_iteration/rung2/rung2_drive.sh:/drive.sh:ro -v /home/vmihaylov/java_8_11_17_to_java_21/current_attempt/.agents/skills/bump-java-${FROM}-to-${TO}/SKILL.md:/skill.md:ro \
+  -v "$BJV_WS:/work" -v "$OHRUN:/oh_run.py:ro" -v /home/vmihaylov/bump-java-version/current_attempt/current_iteration/rung2/bin:/r2bin:ro \
+  -v /home/vmihaylov/bump-java-version/current_attempt/current_iteration/rung2/rung2_drive.sh:/drive.sh:ro -v /home/vmihaylov/bump-java-version/current_attempt/.agents/skills/bump-java-${FROM}-to-${TO}/SKILL.md:/skill.md:ro \
   -v /home/vmihaylov/.m2-fitness:/root/.m2 -v /home/vmihaylov/maven-config/settings.xml:/root/.m2/settings.xml:ro \
   -v /home/vmihaylov/.gradle-fitness:/ro:ro -v /home/vmihaylov/.gradle-dists:/dists:ro \
   --entrypoint bash bump-allagents-sweep:latest /drive.sh "$FROM" "$TO" > "$O/agent.log" 2>&1

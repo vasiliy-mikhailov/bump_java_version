@@ -4,7 +4,7 @@
 # fixed score.py, compare verdict to the expected outcome. Reward = (unique situations) * 0.9^(duplicates).
 # Situations are independent -> run them concurrently (JOBS). No CWE scan (the fortress never checks CWE).
 set -uo pipefail
-P=/home/vmihaylov/java_8_11_17_to_java_21
+P=/home/vmihaylov/bump-java-version
 S=$P/current_attempt/synthetic
 I=$P/current_attempt/current_iteration
 R=$I/rung2
