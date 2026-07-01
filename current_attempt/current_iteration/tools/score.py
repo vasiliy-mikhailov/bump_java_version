@@ -247,14 +247,21 @@ def main():
         try:
             import score_modules
             mods = [json.loads(l) for l in open(modules_file) if '"module"' in l and '"summary"' not in l]
-            if len(mods) >= 2:                               # engage per-module gate ONLY for multi-module repos;
-                MODS = score_modules.score_modules(ws, mods) # a single-module repo keeps the proven repo-level ETGT path
-                dt = MODS.get("modules") or []
-                if dt and all(m["effective_target"] >= m["to"] for m in dt):
-                    modules_ok = True                        # every module reached its own target -> genuine repo PASS
-                elif any(0 <= m["effective_target"] < m["to"] for m in dt):
-                    modules_ok = False                       # a module concretely sits below its target (sibling stuck low)
-                # else inconclusive (a module had no inspectable bytecode): leave None -> defer to repo-level ETGT
+            if len(mods) >= 2:
+                MODS = score_modules.score_modules(ws, mods)  # always record the per-module breakdown for analysis
+                tos = {m.get("to") for m in mods if m.get("to")}
+                # AUTHORITATIVE only for a TRUE heterogeneous repo (modules on distinct targets): that is exactly the
+                # case the repo-wide ETGT min scores wrong (global min < a high module's own jv_to) and exactly what
+                # the per-module iteration executor will dispatch. For a UNIFORM-target multi-module repo the ETGT min
+                # already equals the per-module verdict, so we leave ETGT authoritative and avoid any coverage-mismatch
+                # risk from a module detect_modules might have missed. So the live single-hop sweep sees ZERO change.
+                if len(tos) >= 2:
+                    dt = MODS.get("modules") or []
+                    if dt and all(m["effective_target"] >= m["to"] for m in dt):
+                        modules_ok = True                     # every module reached its OWN target -> genuine repo PASS
+                    elif any(0 <= m["effective_target"] < m["to"] for m in dt):
+                        modules_ok = False                    # a module concretely sits below its target (stuck low)
+                    # else inconclusive (a module had no inspectable bytecode): leave None -> defer to ETGT
         except Exception as e:
             sys.stderr.write("module gate skipped: %s\n" % e)
 
