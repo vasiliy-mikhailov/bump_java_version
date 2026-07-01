@@ -165,10 +165,12 @@ def cwe_summary(path):
     return {"vulns": len(ids), "packages": len(pkgs), "by_severity": dict(sev)}
 
 # --- combined-gate verdict (extracted for unit-testability; behavior preserved) ---
-def decide(pre, comprc, LOST, ETGT, to):
+def decide(pre, comprc, LOST, ETGT, to, modules_ok=None):
     if not pre:        return "NO_BASELINE_NOTESTS"
     if comprc != 0:    return "FAIL_build_post"
     if LOST != 0:      return "FAIL_test_conservation"
+    if modules_ok is not None:                          # module-level bump: EVERY module reached ITS jv_to
+        return "PASS" if modules_ok else "FAIL_target_not_bumped"
     if ETGT == -1:     return "FAIL_no_main_bytecode"   # build OK but no inspectable main classes: the bump is unverifiable, never silently PASS (review score-4)
     if 0 <= ETGT < to: return "FAIL_target_not_bumped"
     # CWE is REPORTED, not yet gating (threshold TBD) — record but don't fail on it
@@ -230,6 +232,7 @@ def main():
     # reward penalty inputs: model-chosen parametric recipes + manual edits (each ×0.9). Optional, default 0.
     parametric = int(sys.argv[10]) if len(sys.argv) > 10 else 0
     edits = int(sys.argv[11]) if len(sys.argv) > 11 else 0
+    modules_file = sys.argv[12] if len(sys.argv) > 12 else ""   # per-module target gate (module-level bump); absent => repo-level
     pre = [x for x in open(pre_f).read().split("\n") if x.strip()] if os.path.exists(pre_f) else []
     post = sorted(passet(ws))
     open(out_dir + "/post_set.txt", "w").write("\n".join(post))
@@ -237,14 +240,27 @@ def main():
     ETGT = efftarget(ws)
     CWE = cwe_summary(cwe_json)
 
-    verdict = decide(pre, comprc, LOST, ETGT, to)
+    # module-level bump: if a per-module list was captured at detect time, gate each module's OWN bytecode
+    # target against ITS jv_to (repo_reward = product of module gates); else fall back to the repo-level ETGT.
+    modules_ok, MODS = None, None
+    if modules_file and os.path.exists(modules_file):
+        try:
+            import score_modules
+            mods = [json.loads(l) for l in open(modules_file) if '"module"' in l and '"summary"' not in l]
+            if mods:
+                MODS = score_modules.score_modules(ws, mods)
+                modules_ok = MODS["all_modules_reached_target"]
+        except Exception as e:
+            sys.stderr.write("module gate skipped: %s\n" % e)
+
+    verdict = decide(pre, comprc, LOST, ETGT, to, modules_ok)
     # reward = gate_pass × 0.9^(parametric recipes + manual edits); 0 if the gate didn't pass
     reward = round(0.9 ** (parametric + edits), 4) if verdict == "PASS" else 0.0
     res = {"slug": os.path.basename(out_dir.rstrip("/")), "hop": f"{frm}->{to}", "verdict": verdict,
            "pre_pass": len(pre), "post_pass": len(post), "lost": LOST,
            "compile_rc": comprc, "test_rc": postrc, "effective_target": ETGT,
            "parametric_recipes": parametric, "edits": edits, "reward": reward,
-           "dep_cwes": CWE}
+           "dep_cwes": CWE, "modules": MODS}
     json.dump(res, open(out_dir + "/result.json", "w"), indent=1)
     print("VERDICT", verdict, "pre", len(pre), "post", len(post), "lost", LOST,
           "target", ETGT, "cwes", CWE.get("vulns"), "parametric", parametric, "edits", edits, "reward", reward)

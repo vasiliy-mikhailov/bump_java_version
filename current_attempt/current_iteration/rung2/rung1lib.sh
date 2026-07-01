@@ -54,7 +54,7 @@ r1_gate(){ # arg1 = number of manual edits made
   bjv to test  >"$O/post.log"    2>&1; local TRC=$?
   if [ "$TRC" = 124 ] || [ "$TRC" = 137 ]; then echo "UNSCORABLE_TEST_TIMEOUT (test_rc=$TRC edits=$EDITS)"; return 0; fi
   jvm-run "$BJV_TO" jvmjob run "cd /work && osv-scanner scan source --offline-vulnerabilities --format json -r ." >"$O/cwe.json" 2>"$O/scan.err" || true
-  PY final "$BJV_WS" "$O/pre_set.txt" "$BJV_FROM" "$BJV_TO" "$BRC" "$TRC" "$O/cwe.json" "$O" | tee "$O/verdict.txt"; local PRC=${PIPESTATUS[0]}
+  PY final "$BJV_WS" "$O/pre_set.txt" "$BJV_FROM" "$BJV_TO" "$BRC" "$TRC" "$O/cwe.json" "$O" 0 0 "$O/modules.jsonl" | tee "$O/verdict.txt"; local PRC=${PIPESTATUS[0]}
   if [ "$PRC" != 0 ] || ! grep -aq "^VERDICT " "$O/verdict.txt"; then rm -f "$O/verdict.txt"; echo "UNSCORABLE_SCORER_ERROR (scorer_rc=$PRC edits=$EDITS)"; return 0; fi
   if grep -aq "VERDICT PASS" "$O/verdict.txt"; then
     docker run --rm python:3-slim python3 -c "print(f'SCORE edits=$EDITS  score={0.9**$EDITS:.3f}')" | tee "$O/score.txt"

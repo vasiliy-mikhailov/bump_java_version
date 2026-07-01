@@ -29,9 +29,9 @@ def score_modules(ws, modules):
     out = []; all_ok = True
     for m in modules:
         if not m.get("bumpable"): continue
-        t = module_target(ws, m["path"], m["tool"]); ok = (t == m["to"])
+        t = module_target(ws, (m.get("module") or m.get("path")), m["tool"]); ok = (t == m["to"])
         all_ok = all_ok and ok
-        out.append({"module": m["path"], "to": m["to"], "effective_target": t, "ok": ok})
+        out.append({"module": (m.get("module") or m.get("path")), "to": m["to"], "effective_target": t, "ok": ok})
     return {"all_modules_reached_target": all_ok and bool(out), "n": len(out), "modules": out}
 
 if __name__ == "__main__":
