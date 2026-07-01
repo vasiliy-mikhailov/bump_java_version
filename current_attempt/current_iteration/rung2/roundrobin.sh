@@ -4,6 +4,13 @@
 # the small queues exhaust, then continues on the big ones. Args: TARGET [JOBS=4] [LOADCAP=20] [MINTESTS=5]
 CI=/home/vmihaylov/bump-java-version/current_attempt/current_iteration
 TARGET=${1:-200}; JOBS=${2:-4}; CAP=${3:-20}; export BJV_MIN_TESTS=${4:-5}
+# --- LIVE-ADJUSTABLE lane cap: a lane launches only while in-flight lanes < the number in $MAXFILE, which is
+# re-read every iteration so the operator can raise/lower concurrency WITHOUT restarting the sweep
+# (echo N > $MAXFILE). Falls back to the JOBS arg if the file is missing/empty/non-numeric. No load gate.
+# Contract: AGENTS.md concurrency clause. ---
+MAXFILE=${BJV_MAXLANES_FILE:-/tmp/q/max_lanes}
+[ -f "$MAXFILE" ] || echo "$JOBS" > "$MAXFILE"
+maxlanes(){ local m; m=$(cat "$MAXFILE" 2>/dev/null); case "$m" in ""|*[!0-9]*|0) echo "$JOBS";; *) echo "$m";; esac; }
 declare -A CUR LAUNCHED NEXT
 for h in 8 11 17 21; do CUR[$h]=1; LAUNCHED[$h]=0; done
 qlen(){ wc -l < /tmp/q/cand_$1.txt 2>/dev/null || echo 0; }
@@ -15,7 +22,7 @@ while true; do
   td=$(totdone); [ "$td" -ge "$TARGET" ] && break
   avail=''; for h in 8 11 17 21; do [ "${CUR[$h]}" -le "$(qlen $h)" ] && avail="$avail $h"; done
   [ -z "$avail" ] && break
-  while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do sleep 8; done   # load gate removed (operator request 2026-07-01); JOBS still caps concurrency
+  while [ "$(jobs -rp | wc -l)" -ge "$(maxlanes)" ]; do sleep 8; done   # live-adjustable cap via $MAXFILE (echo N > it); no load gate
   best=''; bestm=999999
   for h in $avail; do m=$(( $(donec $h) + LAUNCHED[$h] - $(finc $h) )); [ "$m" -lt "$bestm" ] && { bestm=$m; best=$h; }; done
   h=$best
