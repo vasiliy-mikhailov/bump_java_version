@@ -257,12 +257,19 @@ def main():
                 # already equals the per-module verdict, so we leave ETGT authoritative and avoid any coverage-mismatch
                 # risk from a module detect_modules might have missed. So the live single-hop sweep sees ZERO change.
                 if len(tos) >= 2:
+                    # TRUE heterogeneous: decide PURELY per-module on the INSPECTABLE modules. Never fall back to
+                    # the repo-wide ETGT here (global-min bytecode vs a single to is exactly the bug the per-module
+                    # gate replaces: a module whose OWN to is low gets failed against the HIGHEST module's to). A
+                    # module with no inspectable bytecode (-1, e.g. an examples/benchmark module the reactor does
+                    # not build) is UNVERIFIABLE, not a failure -> exclude it.
                     dt = MODS.get("modules") or []
-                    if dt and all(m["effective_target"] >= m["to"] for m in dt):
-                        modules_ok = True                     # every module reached its OWN target -> genuine repo PASS
-                    elif any(0 <= m["effective_target"] < m["to"] for m in dt):
-                        modules_ok = False                    # a module concretely sits below its target (stuck low)
-                    # else inconclusive (a module had no inspectable bytecode): leave None -> defer to ETGT
+                    concrete = [m for m in dt if m["effective_target"] >= 0]
+                    if not concrete:
+                        modules_ok = None                     # nothing inspectable -> defer (ETGT / no_main_bytecode)
+                    elif all(m["effective_target"] >= m["to"] for m in concrete):
+                        modules_ok = True                     # every inspectable module reached its OWN target
+                    else:
+                        modules_ok = False                    # an inspectable module sits below its own target
         except Exception as e:
             sys.stderr.write("module gate skipped: %s\n" % e)
 
